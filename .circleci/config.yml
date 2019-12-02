@@ -1,0 +1,74 @@
+version: 2.1
+commands:
+  python_build:
+    parameters:
+      python_version:
+        type: string
+        default: ""
+    steps:
+      - checkout
+      - run: sudo chown -R circleci:circleci /usr/local/bin
+      - run: sudo chown -R circleci:circleci /usr/local/lib/python<< parameters.python_version >>/site-packages
+      - run:
+          command: |
+            export ERT_SHOW_BACKTRACE=1
+            export INSTALL_DIR="$(pwd)/install"
+            export LD_LIBRARY_PATH="${INSTALL_DIR}/lib:${INSTALL_DIR}/lib64"
+            export DYLD_LIBRARY_PATH="${INSTALL_DIR}/lib:${INSTALL_DIR}/lib64"
+            pip install --upgrade -r requirements.txt
+            pip install pyqt5
+            source .libres_version
+            git clone --branch $LIBRES_VERSION --depth 1 https://github.com/equinor/libres
+            pushd libres
+            source .libecl_version
+            popd
+            git clone --branch $LIBECL_VERSION --depth 1 https://github.com/equinor/libecl
+            bash .build_install.sh libecl
+            bash .build_install.sh libres
+            export PYTHONPATH=$INSTALL_DIR/lib/python<< parameters.python_version >>/dist-packages:$PYTHONPATH
+            export PYTHONPATH=$INSTALL_DIR/lib/python<< parameters.python_version >>/site-packages:$PYTHONPATH
+            export PATH=$INSTALL_DIR/bin:$PATH
+            pip install . --prefix=$INSTALL_DIR
+            python setup.py test --addopts --junitxml=test-results/pytest/results.xml
+            sphinx-build -n -v -E -W ./docs/rst/manual ./tmp/ert_docs
+            pip uninstall pyqt5
+            ert --help
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: test-results
+          destination: test-results
+
+jobs:
+  python-27:
+    docker:
+      - image: circleci/python:2.7
+    steps:
+      - python_build:
+          python_version: "2.7"
+  python-35:
+    docker:
+      - image: circleci/python:3.5
+    steps:
+      - python_build:
+          python_version: "3.5"
+  python-36:
+    docker:
+      - image: circleci/python:3.6
+    steps:
+      - python_build:
+          python_version: "3.6"
+  python-37:
+    docker:
+      - image: circleci/python:3.7
+    steps:
+      - python_build:
+          python_version: "3.7"
+
+workflows:
+  build:
+    jobs:
+      - python-27
+      - python-35
+      - python-36
+      - python-37
