@@ -76,6 +76,22 @@ class RdbApi:
             .first()
         )
 
+    def get_parameter_data(self, name, group, ensemble_name):
+        """Load lightweight "bundle" objects using the ORM."""
+
+        bundle = Bundle("parameter", Parameter.id, Parameter.value, Realization.index)
+        ensemble = self.get_ensemble(ensemble_name)
+        parameter_definition = self._get_parameter_definition(
+            name=name, group=group, ensemble_id=ensemble.id
+        )
+        for row in (
+            self._session.query(bundle)
+            .filter_by(parameter_definition_id=parameter_definition.id,)
+            .join(Realization)
+            .yield_per(1)
+        ):
+            yield row.parameter
+
     def get_response_data(self, name, ensemble_name):
         """Load lightweight "bundle" objects using the ORM."""
 
