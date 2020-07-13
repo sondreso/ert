@@ -27,11 +27,59 @@ class EnsembleSmoother(BaseRunModel):
         # self.setAnalysisModule(arguments["analysis_module"])
 
         self.setPhaseName("Pre processing...", indeterminate=True)
+
+        # This line will initialize parameters in storage
         self.ert().getEnkfSimulationRunner().createRunPath(prior_context)
+
+        ####################################################################################
+        from res.enkf import EnkfConfigNode, EnkfNode, NodeId
+        facade = ERT.enkf_facade
+
+        test_fs = ERT.ert.getEnkfFsManager().getFileSystem("hurrdurr")
+        test_sim_fs = prior_context.get_sim_fs()
+
+        self.ert().getEnkfFsManager().switchFileSystem(test_fs)
+
+        enkf_config_node = self.ert().ensembleConfig().getNode("COEFFS")
+        assert isinstance(enkf_config_node, EnkfConfigNode)
+
+        ERT.ert.getEnkfFsManager().initializeCaseFromExisting(prior_context.get_sim_fs(),0, test_fs)
+        print(test_fs.getCaseName())
+        for i in range(5):
+            node = EnkfNode(enkf_config_node)
+            gkw = node.asGenKw()
+            gkw["COEFF_A"] = 82.0*i
+            gkw["COEFF_B"] = 161.0*i
+            gkw["COEFF_C"] = 21.0*i
+            node.save(test_fs, NodeId( 0 , i ))
+            print("\t", gkw.items())
+
+        test_fs.fsync()
+
+        node_old = EnkfNode(enkf_config_node)
+        print(test_sim_fs.getCaseName())
+        for i in range(5):
+            node_old.load(test_sim_fs, NodeId( 0 , i ))
+            gkw_old = node_old.asGenKw()
+            print("\t", gkw_old.items())
+
+        print(test_fs.getStateMap())
+        print(test_sim_fs.getStateMap())
+
+
+        print(facade.gather_gen_kw_data("hurrdurr", "COEFFS:COEFF_A"))
+        print(facade.gather_gen_kw_data("default", "COEFFS:COEFF_A"))
+        print(facade.gather_gen_kw_data("tu", "COEFFS:COEFF_A"))
+        self.ert().getEnkfFsManager().switchFileSystem(test_sim_fs)
+        print("Done")
+        ####################################################################################
+
         EnkfSimulationRunner.runWorkflows(HookRuntime.PRE_SIMULATION, ert=ERT.ert)
 
         self.setPhaseName("Running forecast...", indeterminate=False)
         self._job_queue = self._queue_config.create_job_queue( )
+
+        # This line will store results in storage (presumably in callback functions)
         num_successful_realizations = self.ert().getEnkfSimulationRunner().runSimpleStep(self._job_queue, prior_context)
 
         self.checkHaveSufficientRealizations(num_successful_realizations)
@@ -43,7 +91,10 @@ class EnsembleSmoother(BaseRunModel):
 
         EnkfSimulationRunner.runWorkflows(HookRuntime.PRE_UPDATE, ert=ERT.ert )
         es_update = self.ert().getESUpdate( )
+
+        # This line will store new parameters in the target case FS
         success = es_update.smootherUpdate( prior_context )
+
         if not success:
             raise ErtRunError("Analysis of simulation failed!")
         EnkfSimulationRunner.runWorkflows(HookRuntime.POST_UPDATE, ert=ERT.ert )

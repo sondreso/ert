@@ -13,6 +13,11 @@ def _resolve_ert_share_path():
     share_path = os.path.realpath(
         os.path.join(os.path.dirname(inspect.getfile(res)), "../../../../share/ert")
     )
+
+    if not os.path.isdir(share_path):
+        share_path = os.path.realpath(
+            os.path.join(os.path.dirname(inspect.getfile(res)), "../../share/ert")
+        )
     return share_path
 
 
