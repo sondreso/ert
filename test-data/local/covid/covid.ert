@@ -1,0 +1,18 @@
+JOBNAME covid_%d
+
+QUEUE_SYSTEM LOCAL
+QUEUE_OPTION LOCAL MAX_RUNNING 50
+
+RUNPATH covid_out/real_%d/iter_%d
+
+OBS_CONFIG observations
+TIME_MAP time_map
+
+NUM_REALIZATIONS 100
+MIN_REALIZATIONS 1
+
+GEN_KW COEFFS coeff.tmpl coeffs.json coeff_priors
+GEN_DATA HOSPITALIZED_RES RESULT_FILE:hospitalized_%d.out REPORT_STEPS:0 INPUT_FORMAT:ASCII
+
+INSTALL_JOB seir_eval SEIR_EVAL
+SIMULATION_JOB seir_eval -cf <CONFIG_PATH>/seir-config-finland.ini -cm <CONFIG_PATH>/contact-matrix-finland.tsv
