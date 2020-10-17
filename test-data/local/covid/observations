@@ -1,6 +1,12 @@
 GENERAL_OBSERVATION HOSPITALIZED_OBS {
    DATA       = HOSPITALIZED_RES;
-   INDEX_LIST = 50,60,100,140,200;
    RESTART    = 0;
-   OBS_FILE   = hospitalized_obs_data.txt;
+   OBS_FILE   = innlagt_obs.txt;
 };
+
+GENERAL_OBSERVATION INTENSIVE_OBS {
+   DATA       = INTENSIVE_RES;
+   RESTART    = 0;
+   OBS_FILE   = intensiv_obs.txt;
+};
+
