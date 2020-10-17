@@ -11,11 +11,14 @@ TIME_MAP time_map
 NUM_REALIZATIONS 100
 MIN_REALIZATIONS 1
 
-GEN_KW COEFFS coeff.tmpl coeffs.json coeff_priors
+GEN_KW RESTRICTIONS dummy.tmpl dummy.txt restriction_priors
 GEN_DATA HOSPITALIZED_RES RESULT_FILE:hospitalized_%d.out REPORT_STEPS:0 INPUT_FORMAT:ASCII
 GEN_DATA INTENSIVE_RES RESULT_FILE:intensive_%d.out REPORT_STEPS:0 INPUT_FORMAT:ASCII
 GEN_DATA INFECTED_RES RESULT_FILE:infected_%d.out REPORT_STEPS:0 INPUT_FORMAT:ASCII
 GEN_DATA DEAD_RES RESULT_FILE:dead_%d.out REPORT_STEPS:0 INPUT_FORMAT:ASCII
 
 INSTALL_JOB seir_eval SEIR_EVAL
-SIMULATION_JOB seir_eval -cf <CONFIG_PATH>/seir-config-finland.ini -cm <CONFIG_PATH>/contact-matrix-finland.tsv
+INSTALL_JOB prepare_input PREPARE_INPUT
+
+SIMULATION_JOB prepare_input <CONFIG_PATH>/seir-config-finland.ini
+SIMULATION_JOB seir_eval -cf seir-config.ini -cm <CONFIG_PATH>/contact-matrix-finland.tsv
