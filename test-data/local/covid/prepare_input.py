@@ -5,7 +5,7 @@ import sys
 restriction_template = """
 [restriction day-{day}]
 day-begins = {day}
-day-ends = {day}
+day-ends = {endday}
 infectivity modifier = {modifier}
 
 """
@@ -24,4 +24,8 @@ def main():
     with open("seir-config.ini", "w") as fh:
         fh.write(config_content)
         for d in range(days):
-            fh.write(restriction_template.format(day=d, modifier=data["DAY_{}".format(d)]))
+            fh.write(restriction_template.format(day=d, endday=d+1, modifier=data["DAY_{}".format(d)]))
+
+
+if __name__ == "__main__":
+    main()
