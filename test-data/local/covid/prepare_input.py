@@ -21,10 +21,14 @@ def main():
     with open(f"{sys.argv[1]}") as fh:
         config_content = fh.read()
 
+    current_restriction = 0.5
+
     with open("seir-config.ini", "w") as fh:
         fh.write(config_content)
         for d in range(days):
-            fh.write(restriction_template.format(day=d, endday=d+1, modifier=data["DAY_{}".format(d)]))
+            current_restriction = data["DAY_{}".format(d)]
+            current_restriction = max(min(current_restriction, 1), 0.01)
+            fh.write(restriction_template.format(day=d, endday=d+1, modifier=current_restriction))
 
 
 if __name__ == "__main__":
