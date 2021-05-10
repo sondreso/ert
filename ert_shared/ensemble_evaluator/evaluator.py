@@ -38,8 +38,6 @@ logger = logging.getLogger(__name__)
 
 
 class EnsembleEvaluator:
-    _dispatch = Dispatcher()
-
     def __init__(self, ensemble, config, iter_, ee_id=0):
         # Without information on the iteration, the events emitted from the
         # evaluator are ambiguous. In the future, an experiment authority* will
@@ -53,19 +51,41 @@ class EnsembleEvaluator:
         self._ensemble = ensemble
 
         self._loop = asyncio.new_event_loop()
-        self._ws_thread = threading.Thread(
-            name="ert_ee_run_server", target=self._run_server, args=(self._loop,)
-        )
+
         self._done = self._loop.create_future()
 
         self._clients = set()
         self._dispatchers_connected = asyncio.Queue(loop=self._loop)
+
         self._batcher = Batcher(timeout=0.5, loop=self._loop)
-        self._dispatch.set_batcher(batcher=self._batcher)
+        self._dispatcher = Dispatcher(batcher=self._batcher)
+
+        self._register_event_handlers(dispatcher=self._dispatcher)
 
         self._snapshot = self.create_snapshot(ensemble)
         self._event_index = 1
         self._result = None
+
+        self._ws_thread = threading.Thread(
+            name="ert_ee_run_server", target=self._run_server, args=(self._loop,)
+        )
+
+    def _register_event_handlers(self, dispatcher):
+        dispatcher.register_event_handler(identifiers.EVGROUP_FM_ALL, batching=True)(
+            self._fm_handler
+        )
+        dispatcher.register_event_handler(identifiers.EVTYPE_ENSEMBLE_STOPPED)(
+            self._ensemble_stopped_handler
+        )
+        dispatcher.register_event_handler(identifiers.EVTYPE_ENSEMBLE_STARTED)(
+            self._ensemble_started_handler
+        )
+        dispatcher.register_event_handler(identifiers.EVTYPE_ENSEMBLE_CANCELLED)(
+            self._ensemble_cancelled_handler
+        )
+        dispatcher.register_event_handler(identifiers.EVTYPE_ENSEMBLE_FAILED)(
+            self._ensemble_failed_handler
+        )
 
     @staticmethod
     def create_snapshot(ensemble):
@@ -95,14 +115,12 @@ class EnsembleEvaluator:
 
         return Snapshot(top.dict())
 
-    @_dispatch.register_event_handler(identifiers.EVGROUP_FM_ALL, batching=True)
     async def _fm_handler(self, events):
         snapshot_mutate_event = PartialSnapshot(self._snapshot)
         for event in events:
             snapshot_mutate_event.from_cloudevent(event)
         await self._send_snapshot_update(snapshot_mutate_event)
 
-    @_dispatch.register_event_handler(identifiers.EVTYPE_ENSEMBLE_STOPPED)
     async def _ensemble_stopped_handler(self, event):
         self._result = event.data
         if self._snapshot.get_status() != ENSEMBLE_STATE_FAILED:
@@ -111,7 +129,6 @@ class EnsembleEvaluator:
             )
             await self._send_snapshot_update(snapshot_mutate_event)
 
-    @_dispatch.register_event_handler(identifiers.EVTYPE_ENSEMBLE_STARTED)
     async def _ensemble_started_handler(self, event):
         if self._snapshot.get_status() != ENSEMBLE_STATE_FAILED:
             snapshot_mutate_event = PartialSnapshot(self._snapshot).from_cloudevent(
@@ -119,7 +136,6 @@ class EnsembleEvaluator:
             )
             await self._send_snapshot_update(snapshot_mutate_event)
 
-    @_dispatch.register_event_handler(identifiers.EVTYPE_ENSEMBLE_CANCELLED)
     async def _ensemble_cancelled_handler(self, event):
         if self._snapshot.get_status() != ENSEMBLE_STATE_FAILED:
             snapshot_mutate_event = PartialSnapshot(self._snapshot).from_cloudevent(
@@ -128,7 +144,6 @@ class EnsembleEvaluator:
             await self._send_snapshot_update(snapshot_mutate_event)
             self._stop()
 
-    @_dispatch.register_event_handler(identifiers.EVTYPE_ENSEMBLE_FAILED)
     async def _ensemble_failed_handler(self, event):
         if self._snapshot.get_status() not in [
             ENSEMBLE_STATE_STOPPED,
@@ -232,7 +247,7 @@ class EnsembleEvaluator:
                     )
                 except cloudevents.exceptions.DataUnmarshallerError:
                     event = from_json(msg, data_unmarshaller=lambda x: pickle.loads(x))
-                await self._dispatch.handle_event(self, event)
+                await self._dispatcher.handle_event(event)
                 if event["type"] in [
                     identifiers.EVTYPE_ENSEMBLE_STOPPED,
                     identifiers.EVTYPE_ENSEMBLE_FAILED,

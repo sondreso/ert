@@ -5,24 +5,24 @@ from typing import Optional
 
 
 class Batcher:
-    def __init__(self, timeout, loop):
+    def __init__(self, timeout, loop=None):
         self._timeout = timeout
         self._loop = loop
 
         self._running = True
-        self.__LOOKUP_MAP_BATCHING = defaultdict(lambda: defaultdict(list))
+        self.__LOOKUP_MAP = defaultdict(list)
 
         # Schedule task
         self._task = asyncio.ensure_future(self._job(), loop=self._loop)
 
     async def _work(self):
-        for f, instance_map in self.__LOOKUP_MAP_BATCHING.items():
-            for instance in instance_map:
-                events, instance_map[instance] = instance_map[instance], []
-                await f(instance, events)
+        for f in self.__LOOKUP_MAP:
+            events, self.__LOOKUP_MAP[f] = self.__LOOKUP_MAP[f], []
+            if events:
+                await f(events)
 
-    def put(self, f, instance, event):
-        self.__LOOKUP_MAP_BATCHING[f][instance].append(event)
+    def put(self, f, event):
+        self.__LOOKUP_MAP[f].append(event)
 
     async def _job(self):
         while self._running:
@@ -38,12 +38,9 @@ class Batcher:
 
 
 class Dispatcher:
-    def __init__(self):
+    def __init__(self, batcher=None):
         self.__LOOKUP_MAP = defaultdict(list)
-        self._batcher: Optional[Batcher] = None
-
-    def set_batcher(self, batcher):
-        self._batcher = batcher
+        self._batcher: Optional[Batcher] = batcher
 
     def register_event_handler(self, event_types, batching=False):
         def decorator(function):
@@ -60,13 +57,13 @@ class Dispatcher:
 
         return decorator
 
-    async def handle_event(self, instance, event):
+    async def handle_event(self, event):
         for f, batching in self.__LOOKUP_MAP[event["type"]]:
             if batching:
                 if self._batcher is None:
                     raise RuntimeError(
-                        f"No batcher available when handeling {event} using {f} on {instance}"
+                        f"Requested batching of {event} with handler {f}, but no batcher was specified"
                     )
-                self._batcher.put(f, instance, event)
+                self._batcher.put(f, event)
             else:
-                await f(instance, event)
+                await f(event)
