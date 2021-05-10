@@ -1,3 +1,4 @@
+from ert_shared.status.entity.state import JOB_STATE_FAILURE
 import pathlib
 import pickle
 import cloudpickle
@@ -580,7 +581,21 @@ def test_prefect_reties(unused_tcp_port, coefficients, tmpdir, function_config):
         # Check we get only one job error message per realization
         assert len(error_event_reals) == config["realizations"]
         for idx, reals in enumerate(error_event_reals):
-            assert len(reals) == 1
+            # Assert that there's one job that has the Failure status
+            assert (
+                len(
+                    list(
+                        filter(
+                            lambda x: list(
+                                list(x["steps"].values())[0]["jobs"].values()
+                            )[0]["status"]
+                            == JOB_STATE_FAILURE,
+                            reals.values(),
+                        )
+                    )
+                )
+                == 1
+            )
             assert str(idx) in reals
 
 
