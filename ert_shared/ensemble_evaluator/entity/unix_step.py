@@ -80,10 +80,16 @@ class UnixTask(prefect.Task):
         futures = []
         for input_ in self._step.get_inputs():
             path_base = runpath / _BIN_FOLDER if input_.is_executable() else runpath
-            futures.append(
-                transmitters[input_.get_name()].dump(
-                    path_base / input_.get_path(), input_.get_mime()
+            path = input_.get_path()
+            if path.is_absolute():
+                raise ValueError(
+                    f"input {input_.get_name()} had an absolute path {path}"
                 )
+            abs_path = path_base / path
+            if not abs_path.parent.exists():
+                abs_path.parent.mkdir(parents=True, exist_ok=True)
+            futures.append(
+                transmitters[input_.get_name()].dump(abs_path, input_.get_mime())
             )
         asyncio.get_event_loop().run_until_complete(asyncio.gather(*futures))
         for input_ in self._step.get_inputs():
