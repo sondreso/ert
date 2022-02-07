@@ -13,8 +13,9 @@ from ert_shared.ensemble_evaluator.ensemble.base import Ensemble
 from ert_shared.ensemble_evaluator.ensemble.builder import (
     StepBuilder,
     create_ensemble_builder,
-    create_file_io_builder,
+    create_input_builder,
     create_job_builder,
+    create_output_builder,
     create_realization_builder,
 )
 
@@ -25,13 +26,10 @@ def add_step_inputs(
     step: StepBuilder,
 ) -> None:
     for input_ in inputs:
-        transformation = _get_input_recordtransformation(input_)
         step_input = (
-            create_file_io_builder()
+            create_input_builder()
             .set_name(input_.name)
-            .set_mime(input_.dest_mime)
-            .set_path(pathlib.Path(input_.dest_location))
-            .set_transformation(transformation)
+            .set_transformation(input_.transformation)
         )
 
         for iens, io_to_transmitter in transmitters.items():
@@ -56,11 +54,22 @@ def add_commands(
         )
 
     async def transform_output(
-        transmitter: ert.data.RecordTransmitter, mime: str, location: pathlib.Path
+        name: str,
+        transmitter: ert.data.RecordTransmitter,
+        location: pathlib.Path,
     ) -> None:
-        transformation = ert.data.ExecutableRecordTransformation()
-        record = await transformation.transform_output(mime, location)
+        transformation = ert.data.ExecutableTransformation(location)
+        record = await transformation.to_record()
         await transmitter.transmit_record(record)
+        step.add_input(
+            create_input_builder()
+            .set_name(name)
+            .set_transformation(transformation)
+            # cast necessary due to https://github.com/python/mypy/issues/9656
+            .set_transmitter_factory(
+                lambda _t=transmitter: cast(ert.data.RecordTransmitter, _t)
+            )
+        )
 
     for command in transportable_commands:
         transmitter: ert.data.RecordTransmitter
@@ -77,20 +86,9 @@ def add_commands(
             raise ValueError(f"Unsupported transmitter type: {storage_type}")
         get_event_loop().run_until_complete(
             transform_output(
+                name=command.name,
                 transmitter=transmitter,
-                mime="application/octet-stream",
                 location=command.location,
-            )
-        )
-        step.add_input(
-            create_file_io_builder()
-            .set_name(command.name)
-            .set_path(command_location(command.name))
-            .set_mime("application/octet-stream")
-            .set_transformation(ert.data.ExecutableRecordTransformation())
-            # cast necessary due to https://github.com/python/mypy/issues/9656
-            .set_transmitter_factory(
-                lambda _t=transmitter: cast(ert.data.RecordTransmitter, _t)
             )
         )
 
@@ -103,12 +101,10 @@ def add_step_outputs(
     step: StepBuilder,
 ) -> None:
     for record_name, output in step_config.output.items():
-        transformation = _get_output_recordtransformation(output)
+        transformation = output.get_transformation_instance()
         output = (
-            create_file_io_builder()
+            create_output_builder()
             .set_name(record_name)
-            .set_path(pathlib.Path(output.location))
-            .set_mime(output.mime)
             .set_transformation(transformation)
         )
         for iens in range(0, ensemble_size):
@@ -182,27 +178,3 @@ def build_ensemble(
     )
 
     return builder.build()
-
-
-def _get_input_recordtransformation(
-    input_config: ert3.config.LinkedInput,
-) -> ert.data.RecordTransformation:
-    """Determine and configure the RecordTransformation to be used, by sniffing the
-    provided inputs."""
-    if input_config.dest_is_directory:
-        return ert.data.TarRecordTransformation()
-    elif input_config.dest_smry_keys:
-        return ert.data.EclSumTransformation(input_config.dest_smry_keys)
-    return ert.data.FileRecordTransformation()
-
-
-def _get_output_recordtransformation(
-    output_config: ert3.config.StageIO,
-) -> ert.data.RecordTransformation:
-    """Determine (by sniffing the requested configuration) and configure a
-    RecordTransformation for the output from a step."""
-    if output_config.is_directory:
-        return ert.data.TarRecordTransformation()
-    elif output_config.smry_keys:
-        return ert.data.EclSumTransformation(output_config.smry_keys)
-    return ert.data.FileRecordTransformation()

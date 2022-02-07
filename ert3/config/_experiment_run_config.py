@@ -1,4 +1,5 @@
-from typing import Dict, List, NamedTuple, cast
+import pathlib
+from typing import Any, Dict, List, NamedTuple, Optional, cast
 
 import ert
 
@@ -22,14 +23,9 @@ class LinkedInput(NamedTuple):
     """
 
     name: str
-    source_mime: str
     source_namespace: SourceNS
     source_location: str
-    source_is_directory: bool
-    dest_location: str
-    dest_mime: str
-    dest_is_directory: bool
-    dest_smry_keys: List[str]
+    transformation: Optional[ert.data.RecordTransformation]
 
 
 class ExperimentRunConfig:
@@ -132,34 +128,25 @@ class ExperimentRunConfig:
         stage = self.get_stage()
         for ensemble_input in self._ensemble_config.input:
             name = ensemble_input.record
-            stage_is_directory = stage.input[name].is_directory
-            stage_mime = stage.input[name].mime
-            stage_location = stage.input[name].location
-            stage_smry_keys = stage.input[name].smry_keys
 
-            if stage_mime != ensemble_input.mime:
-                print(
-                    f"Warning: Conflicting ensemble mime '{ensemble_input.mime}' and "
-                    + f"stage mime '{stage_mime}' for input '{name}'."
-                )
-
-            # fall back on stage is_directory
-            ensemble_is_directory = (
-                ensemble_input.is_directory
-                if ensemble_input.is_directory is not None
-                else stage_is_directory
+            transformation: Optional[ert.data.RecordTransformation] = (
+                stage.input[name].get_transformation_instance()
+                if stage.input[name].transformation
+                else None
             )
+            if (
+                ensemble_input.source_namespace == SourceNS.resources
+                and not transformation
+            ):
+                raise ert.exceptions.ConfigValidationError(
+                    f"no transformation for resource {name}"
+                )
 
             input_ = LinkedInput(
                 name=name,
                 source_namespace=ensemble_input.source_namespace,
-                source_mime=ensemble_input.mime,
-                source_is_directory=ensemble_is_directory,
                 source_location=ensemble_input.source_location,
-                dest_mime=stage_mime,
-                dest_location=stage_location,
-                dest_is_directory=stage_is_directory,
-                dest_smry_keys=stage_smry_keys,
+                transformation=transformation,
             )
             inputs[input_.source_namespace][input_.name] = input_
         return inputs

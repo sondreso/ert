@@ -88,11 +88,9 @@ class UnixTask(prefect.Task):
     ):
         async def transform_input(input_):
             record = await transmitters[input_.get_name()].load()
-            await input_.get_transformation().transform_input(
+            await input_.get_transformation().from_record(
                 record=record,
-                mime=input_.get_mime(),
-                runpath=runpath,
-                location=input_.get_path(),
+                root_path=runpath,
             )
 
         futures = []
@@ -102,9 +100,8 @@ class UnixTask(prefect.Task):
 
     def run(self, inputs=None):
         async def transform_output(output):
-            record = await output.get_transformation().transform_output(
-                mime=output.get_mime(),
-                location=run_path / output.get_path(),
+            record = await output.get_transformation().to_record(
+                root_path=run_path,
             )
             transmitter = outputs[output.get_name()]
             await transmitter.transmit_record(record)
@@ -122,10 +119,10 @@ class UnixTask(prefect.Task):
 
             futures = []
             for output in self._step.get_outputs():
-                if not (run_path / output.get_path()).exists():
-                    raise FileNotFoundError(
-                        f"Output file {output.get_path()} was not generated!"
-                    )
+                # if not (run_path / output.get_path()).exists():
+                #     raise FileNotFoundError(
+                #         f"Output file {output.get_path()} was not generated!"
+                #     )
 
                 outputs[output.get_name()] = self._output_transmitters[
                     output.get_name()

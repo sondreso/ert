@@ -28,7 +28,7 @@ def _build_init_argparser(subparsers: Any) -> None:
     init_parser.add_argument(
         "--example",
         help="Name of the example that would be copied "
-        "to the working directory and initialised.\n"
+        "to the working directory and initialized.\n"
         f"The available examples are: {', '.join(_get_ert3_example_names())}",
     )
 
@@ -76,12 +76,22 @@ def _build_record_argparser(subparsers: Any) -> None:
         help="Indicate that the record is a blob created as a tar from a directory",
     )
 
+    # for python3.8, this should be deprecated and replaced with a --smry-keys
+    # using the 'extend' action.
+    record_load_parser.add_argument(
+        "--smry-key",
+        action="append",
+        help="Load eclipse data using this summary key. "
+        + "Can be provided multiple times.",
+    )
+
     record_load_parser.add_argument(
         "--mime-type",
         default="guess",
         help="MIME type of file. If type is 'guess', a guess is made. If a "
         + f"guess is unsuccessful, it defaults to {DEFAULT_RECORD_MIME_TYPE}. "
-        + "A provided value is ignored if --blob-record is passed, as it is "
+        + "A provided value is ignored if one of--blob-record, --smry-key or "
+        + "--is-directory is passed, as it is "
         + "then assumed that the type is 'application/octet-stream'. "
         + "Default: guess.",
         choices=tuple(("guess",) + ert.serialization.registered_types()),
@@ -175,7 +185,7 @@ def _get_ert3_examples_path() -> Path:
 
 def _get_ert3_example_names() -> List[str]:
     pkg_examples_path = _get_ert3_examples_path()
-    ert_example_names = []
+    ert_example_names: List[str] = []
     for example in pkg_examples_path.iterdir():
         if example.is_dir() and "__" not in example.name:
             ert_example_names.append(example.name)
@@ -268,37 +278,39 @@ def _record(workspace: Workspace, args: Any) -> None:
         get_event_loop().run_until_complete(future)
 
     elif args.sub_record_cmd == "load":
-        if args.mime_type == "guess" and not args.blob_record:
-            guess = mimetypes.guess_type(str(args.record_file))[0]
-            if guess:
-                if ert.serialization.has_serializer(guess):
-                    record_mime = guess
+        transformation: ert.data.RecordTransformation
+        if args.is_directory:
+            transformation = ert.data.TarTransformation(args.record_file)
+        elif args.smry_key:
+            transformation = ert.data.EclSumTransformation(
+                args.record_file, args.smry_key
+            )
+        else:
+            if args.mime_type == "guess":
+                guess = mimetypes.guess_type(str(args.record_file))[0]
+                if guess:
+                    if ert.serialization.has_serializer(guess):
+                        mime = guess
+                    else:
+                        print(
+                            f"Unsupported type '{guess}', defaulting to "
+                            + f"'{DEFAULT_RECORD_MIME_TYPE}'."
+                        )
+                        mime = DEFAULT_RECORD_MIME_TYPE
                 else:
                     print(
-                        f"Unsupported type '{guess}', defaulting to "
-                        + f"'{DEFAULT_RECORD_MIME_TYPE}'."
+                        f"Unable to guess what type '{args.record_file}' is, "
+                        + f"defaulting to '{DEFAULT_RECORD_MIME_TYPE}'."
                     )
-                    record_mime = DEFAULT_RECORD_MIME_TYPE
+                    mime = DEFAULT_RECORD_MIME_TYPE
             else:
-                print(
-                    f"Unable to guess what type '{args.record_file}' is, "
-                    + f"defaulting to '{DEFAULT_RECORD_MIME_TYPE}'."
-                )
-                record_mime = DEFAULT_RECORD_MIME_TYPE
-        else:
-            record_mime = args.mime_type
-
-        if args.blob_record or args.is_directory:
-            record_mime = "application/octet-stream"
+                mime = args.mime_type
+            transformation = ert.data.SerializationTransformation(
+                args.record_file, mime
+            )
 
         get_event_loop().run_until_complete(
-            ert3.engine.load_record(
-                workspace,
-                args.record_name,
-                args.record_file,
-                record_mime,
-                args.is_directory,
-            )
+            ert3.engine.load_record(workspace, args.record_name, transformation)
         )
     else:
         raise NotImplementedError(
@@ -393,3 +405,9 @@ def _main() -> None:
         _clean(workspace, args)
     else:
         raise NotImplementedError(f"No implementation to handle command {args.sub_cmd}")
+
+
+if __name__ == "__main__":
+    workspace_ = Workspace(pathlib.Path.cwd())
+    ert3.console.clean(workspace_, set(), True)
+    _main()

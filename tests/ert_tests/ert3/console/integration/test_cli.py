@@ -512,9 +512,9 @@ def test_cli_validation_experiment_function(capsys):
         ),
     ],
 )
-def test_cli_validation_stages_function(config, expected, capsys):
+def test_cli_validation_stages_function(config, expected, capsys, plugin_registry):
     with pytest.raises(ert.exceptions.ConfigValidationError) as exc_info:
-        ert3.config.load_stages_config(config)
+        ert3.config.load_stages_config(config, plugin_registry=plugin_registry)
     ert3.console.report_validation_errors(exc_info.value)
     capture = capsys.readouterr()
     assert "Error while loading stages configuration data:" in capture.out

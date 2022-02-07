@@ -1,138 +1,82 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, create_model
 
-from ert3.config import PluginConfigManager
-from ert3.config import ErtBaseModel, ErtPluginField
-
-
-class _StagesConfig(BaseModel):
-    class Config:
-        validate_all = True
-        validate_assignment = True
-        extra = "forbid"
-        allow_mutation = False
-        arbitrary_types_allowed = True
+import ert3
 
 
-class TransformationConfigBase(_StagesConfig):
-    """Common config for all Transformations"""
-
-    location: str
-
-
-class FileTransformationConfig(TransformationConfigBase):
-    mime: str = ""
-
-
-class SummaryTransformationConfig(TransformationConfigBase):
-    smry_keys: Optional[List[str]] = None
-
-
-class DirectoryTransformationConfig(TransformationConfigBase):
-    pass
-
-
-class DummyInstance:
-    """
-    This is dummy instance that just stores the config.
-    This would be the actual Transformations in the real case.
-    """
-
-    def __init__(self, config) -> None:
-        self._config = config
-
-    def __str__(self) -> str:
-        return f"DummyInstance(config={self._config})"
-
-
-def get_configs(pm):
-    """
-    We now need the create configs that use the ErtPluginField dynamically,
-    as we would like to control the schema created based on the plugins we provide.
-    This will allow us to specify a subset of plugins we want to have effect at runtime,
-    such as only using configs from ert in tests.
-    """
-
-    class StageIO(ErtBaseModel, _StagesConfig, plugin_manager=pm):
-        name: str
-        transformation: ErtPluginField
-
-    class Stage(BaseModel):
-        input: StageIO
-
-    return Stage
-
-
-def register_plugins() -> PluginConfigManager:
-    """
-    This would normally be controlled by a module that calls the pluggy hooks,
-    similar to ert_shared/plugins/plugin_manager.py.
-    """
-    pm = PluginConfigManager()
-    pm.register_category(category="transformation")
-    pm.register(
-        name="file",
-        category="transformation",
-        config=FileTransformationConfig,
-        factory=lambda x: DummyInstance(config=x),
-    )
-    pm.register(
-        name="directory",
-        category="transformation",
-        config=DirectoryTransformationConfig,
-        factory=lambda x: DummyInstance(config=x),
-    )
-    pm.register(
-        name="summary",
-        category="transformation",
-        config=SummaryTransformationConfig,
-        factory=lambda x: DummyInstance(config=x),
-    )
-    return pm
+def foo():
+    print("LOL")
 
 
 def main():
-    pm = register_plugins()
-    Stage = get_configs(pm=pm)
+    plugin_registry = ert3.config.ConfigPluginRegistry()
+    plugin_registry.register_category(category="transformation")
+    plugin_manager = ert3.plugins.ErtPluginManager()
+    plugin_manager.get_plugin_configs(registry=plugin_registry)
+
+    stages_config = ert3.config.get_configs(plugin_registry=plugin_registry)
 
     stages_configs = [
         {
-            "input": {
-                "name": "test",
-                "transformation": {"type": "file", "location": "test.json"},
-            },
-        },
-        {
-            "input": {
-                "name": "test",
-                "transformation": {"type": "directory", "location": "test/hei"},
-            },
-        },
-        {
-            "input": {
-                "name": "test",
-                "transformation": {"type": "file", "mime": "hei"},
-            },
-        },
-        {
-            "input": {
-                "name": "test",
-                "transformation": {
-                    "type": "summary",
-                    "location": "test.smry",
-                    "smry_keys": ["WOPR", "FOPR"],
+            "__root__": (
+                {
+                    "name": "step",
+                    "input": [
+                        {
+                            "name": "test",
+                            "transformation": {
+                                "type": "serialization",
+                                "location": "test.json",
+                            },
+                        }
+                    ],
+                    "output": [
+                        {
+                            "name": "foo",
+                            "transformation": {
+                                "type": "serialization",
+                                "location": "test.json",
+                            },
+                        }
+                    ],
+                    "function": "ert3.console:main",
                 },
-            },
+            )
         },
+        # {
+        #     "input": {
+        #         "name": "test",
+        #         "transformation": {"type": "directory", "location": "test/hei"},
+        #     },
+        # },
+        # {
+        #     "input": {
+        #         "name": "test",
+        #         "transformation": {"type": "file", "mime": "hei"},
+        #     },
+        # },
+        # {
+        #     "input": {
+        #         "name": "test",
+        #         "transformation": {
+        #             "type": "summary",
+        #             "location": "test.smry",
+        #             "smry_keys": ["WOPR", "FOPR"],
+        #         },
+        #     },
+        # },
     ]
 
     for config in stages_configs:
         print(f"Attempting to validate: {config}")
         try:
-            stage = Stage(**config)
+            stage = stages_config(**config)
             print(stage)
-            print(stage.input.get_transformation_instance())
+            for step in stage:
+                print(step)
+                for input_ in step.input:
+                    print(step.input[input_].get_transformation_instance())
         except ValidationError as e:
             print(f"Error: {e}")
         print()

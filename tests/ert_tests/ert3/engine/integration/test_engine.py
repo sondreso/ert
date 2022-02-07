@@ -503,12 +503,15 @@ def test_record_load_and_run(
 ):
     workspace = workspace_integration
     with assert_clean_workspace(workspace):
+        transformation = ert.data.SerializationTransformation(
+            location=designed_coeffs_record_file_integration,
+            mime="application/json"
+        )
         get_event_loop().run_until_complete(
             ert3.engine.load_record(
                 workspace,
                 "designed_coefficients",
-                designed_coeffs_record_file_integration,
-                "application/json",
+                transformation,
             )
         )
 
@@ -522,10 +525,12 @@ def test_record_load_and_run(
     with assert_clean_workspace(workspace, allowed_files={"data.json"}):
         ert3.engine.export(workspace, "doe", experiment_run_config)
 
+    transformation = ert.data.SerializationTransformation(
+        location=designed_coeffs_record_file_integration,
+        mime="application/json",
+    )
     designed_collection = get_event_loop().run_until_complete(
-        ert.data.load_collection_from_file(
-            designed_coeffs_record_file_integration, "application/json"
-        )
+        ert.data.load_collection_from_file(transformation)
     )
     export_data = _load_export_data(workspace, "doe")
     assert len(designed_collection) == len(export_data)
@@ -541,18 +546,20 @@ def test_record_load_and_run(
 @pytest.mark.asyncio
 async def test_record_load_twice(workspace, designed_coeffs_record_file):
     with assert_clean_workspace(workspace):
+        transformation = ert.data.SerializationTransformation(
+            location=designed_coeffs_record_file,
+            mime="application/json",
+        )
         await ert3.engine.load_record(
             workspace,
             "designed_coefficients",
-            designed_coeffs_record_file,
-            "application/json",
+            transformation,
         )
         with pytest.raises(ert.exceptions.ElementExistsError):
             await ert3.engine.load_record(
                 workspace,
                 "designed_coefficients",
-                designed_coeffs_record_file,
-                "application/json",
+                transformation,
             )
 
 
@@ -643,12 +650,15 @@ def test_partial_sensitivity_run_and_export(
         gaussian_parameters_config,
     )
     with assert_clean_workspace(workspace):
+        transformation = ert.data.SerializationTransformation(
+            location=oat_compatible_record_file,
+            mime="application/json",
+        )
         get_event_loop().run_until_complete(
             ert3.engine.load_record(
                 workspace,
                 "other_coefficients",
-                oat_compatible_record_file,
-                "application/json",
+                transformation,
             )
         )
         ert3.engine.run_sensitivity_analysis(
@@ -682,12 +692,15 @@ def test_incompatible_partial_sensitivity_run(
     experiment_dir = workspace._path / _EXPERIMENTS_BASE / "partial_sensitivity"
     assert experiment_dir.is_dir()
     with assert_clean_workspace(workspace):
+        transformation = ert.data.SerializationTransformation(
+            location=oat_incompatible_record_file,
+            mime="application/json",
+        )
         get_event_loop().run_until_complete(
             ert3.engine.load_record(
                 workspace,
                 "other_coefficients",
-                oat_incompatible_record_file,
-                "application/json",
+                transformation,
             )
         )
 

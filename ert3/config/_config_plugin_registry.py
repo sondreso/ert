@@ -1,29 +1,42 @@
-from collections import namedtuple
-from typing import Any, Callable, Dict, Literal, Type, Union
+import importlib
+from collections import defaultdict
+from typing import Any, Callable, DefaultDict, Dict, NamedTuple, Optional, Type, Union
+from typing_extensions import Literal
 
 from pydantic import BaseModel, Field, create_model
 
 
-_RegisteredConfig = namedtuple("_RegisteredConfig", "config factory")
+class _RegisteredConfig(NamedTuple):
+    config: Type[BaseModel]
+    factory: Callable[[Type[BaseModel]], Any]
 
 
-class PluginConfigManager:
+class ConfigPluginRegistry:
     def __init__(self) -> None:
         self._descriminator: Dict[str, str] = {}
         self._registry: Dict[str, Dict[str, _RegisteredConfig]] = {}
+        self._default: DefaultDict[str, Any] = defaultdict(lambda: Ellipsis)
 
-    def register_category(self, category: str, descriminator: str = "type"):
+    def register_category(
+        self,
+        category: str,
+        descriminator: str = "type",
+        optional: bool = True,
+    ):
         if category in self._registry:
             raise ValueError(f"Category '{category}' is already registered")
         self._descriminator[category] = descriminator
         self._registry[category] = {}
+
+        if optional:
+            self._default[category] = None
 
     def register(
         self,
         name: str,
         category: str,
         config: Type[BaseModel],
-        factory: Callable[[Type[BaseModel]], Any],
+        factory: Callable[[Type[BaseModel], Type[BaseModel]], Any],
     ):
         if not category in self._registry:
             raise ValueError(
@@ -32,10 +45,15 @@ class PluginConfigManager:
         if name in self._registry[category]:
             raise ValueError(f"{name} is already registered")
 
-        field_definitions = {self._descriminator[category]: (Literal[name], ...)}
+        field_definitions: Any = {self._descriminator[category]: (Literal[name], ...)}  # type: ignore
+        config_name = f"Full{config.__name__}"
         full_config = create_model(
-            f"Full{config.__name__}", __base__=config, **field_definitions
+            config_name, __base__=config, __module__=__name__, **field_definitions
         )
+
+        # make importable
+        mod = importlib.import_module(__name__)
+        setattr(mod, config_name, full_config)
 
         self._registry[category][name] = _RegisteredConfig(
             config=full_config, factory=factory
@@ -57,7 +75,7 @@ class PluginConfigManager:
             )
 
         if len(values) > 1:
-            return Union[values]
+            return Union[values]  # type: ignore
         else:
             return values[0]
 
@@ -70,6 +88,8 @@ class PluginConfigManager:
             )
 
         if len(self._registry[category]) == 1:
-            return Field(...)
+            return Field(self._default[category])
         else:
-            return Field(..., discriminator=self._descriminator[category])
+            return Field(
+                self._default[category], discriminator=self._descriminator[category]
+            )

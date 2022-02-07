@@ -118,6 +118,11 @@ class Workspace:
         Returns: ert3.config.ExperimentRunConfig: A configuration object for an
             experiment run.
         """
+        plugin_registry = ert3.config.ConfigPluginRegistry()
+        plugin_registry.register_category(category="transformation", optional=True)
+        plugin_manager = ert3.plugins.ErtPluginManager()
+        plugin_manager.collect(registry=plugin_registry)
+
         experiment_config_path = (
             self._path / _EXPERIMENTS_BASE / experiment_name / "experiment.yml"
         )
@@ -129,7 +134,9 @@ class Workspace:
         with open(stages_config_path, encoding="utf-8") as f:
             config_dict = yaml.safe_load(f)
         sys.path.append(str(self._path))
-        stage_config = ert3.config.load_stages_config(config_dict)
+        stage_config = ert3.config.load_stages_config(
+            config_dict, plugin_registry=plugin_registry
+        )
 
         ensemble_config_path = (
             self._path / _EXPERIMENTS_BASE / experiment_name / "ensemble.yml"
@@ -164,20 +171,11 @@ class Workspace:
         linked_input: ert3.config.LinkedInput,
         ensemble_size: int = 1,
     ) -> ert.data.RecordCollection:
-        stage_name = experiment_run_config.ensemble_config.forward_model.stage
-        step = cast(
-            ert3.config.Step,
-            experiment_run_config.stages_config.step_from_key(stage_name),
+        return await ert.data.load_collection_from_file(
+            transformation=linked_input.transformation,
+            length=ensemble_size,
+            root_path=self._path / _RESOURCES_BASE,
         )
-        record_mime = step.input[linked_input.name].mime
-        file_path = self._path / _RESOURCES_BASE / linked_input.source_location
-        resource = await ert.data.load_collection_from_file(
-            file_path,
-            record_mime,
-            ensemble_size,
-            is_directory=linked_input.source_is_directory,
-        )
-        return resource
 
     def export_json(
         self,
