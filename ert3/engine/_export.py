@@ -45,6 +45,7 @@ def _prepare_export_parameters(
 
         elif record_source[0] == "resources":
             # DO NOT export blob records as inputs
+            # FIXME: use affinity here
             if step.input[record_name].mime == "application/octet-stream":
                 continue
             collection = get_event_loop().run_until_complete(

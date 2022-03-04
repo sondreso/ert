@@ -220,8 +220,10 @@ def base_ensemble_dict():
 
 
 @pytest.fixture()
-def ensemble(base_ensemble_dict):
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+def ensemble(base_ensemble_dict, plugin_registry):
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()

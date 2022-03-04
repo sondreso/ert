@@ -1,5 +1,10 @@
 from ._config_plugin_registry import ConfigPluginRegistry
-from ._ensemble_config import load_ensemble_config, EnsembleConfig, SourceNS
+from ._ensemble_config import (
+    load_ensemble_config,
+    EnsembleConfig,
+    create_ensemble_config,
+    SourceNS,
+)
 from ._stages_config import (
     load_stages_config,
     StagesConfig,
@@ -18,6 +23,7 @@ from ._experiment_run_config import ExperimentRunConfig, LinkedInput
 __all__ = [
     "load_ensemble_config",
     "EnsembleConfig",
+    "create_ensemble_config",
     "load_stages_config",
     "StagesConfig",
     "Step",

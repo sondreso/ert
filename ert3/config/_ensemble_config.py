@@ -1,11 +1,12 @@
+from functools import partialmethod
 import sys
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, no_type_check
+from typing import Any, Dict, List, Optional, Tuple, Type, no_type_check
 
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, create_model, root_validator, validator
 
 import ert
-from ._validator import ensure_mime
+from ._config_plugin_registry import ConfigPluginRegistry, getter_template
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -34,18 +35,17 @@ class ForwardModel(_EnsembleConfig):
     driver: Literal["local", "pbs"] = "local"
 
 
-class Input(_EnsembleConfig):
+class _Input(_EnsembleConfig):
     _namespace: SourceNS
     _location: str
-    source: str
-    record: str
-    mime: str = ""
-    is_directory: Optional[bool]
-    smry_keys: Optional[List[str]]
 
     @no_type_check
     def __init__(self, **data: Any) -> None:
         super().__init__(**data)
+        if not "source" in data:
+            raise RuntimeError(
+                "The input configuration must be obtained via 'create_ensemble_config'"
+            )
         parts = data["source"].split(".", maxsplit=1)
         self._namespace = SourceNS(parts[0])
         self._location = parts[1]
@@ -58,14 +58,37 @@ class Input(_EnsembleConfig):
     def source_location(self) -> str:
         return self._location
 
-    @validator("source")
-    def split_source(cls, v: str) -> str:
-        parts = v.split(".", maxsplit=1)
-        if not len(parts) == 2:
-            raise ValueError(f"{v} missing at least one dot (.) to form a namespace")
-        return v
 
-    _ensure_mime = validator("mime", allow_reuse=True)(ensure_mime("source"))
+def _ensure_source_format(cls, v: str) -> str:
+    parts = v.split(".", maxsplit=1)
+    if not len(parts) == 2:
+        raise ValueError(f"{v} missing at least one dot (.) to form a namespace")
+    return v
+
+
+def _inject_location(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    'location' will be defined as whatever comes after 'resources.' in
+    the 'source' value. This is injected into a transformation should it
+    exist.
+    """
+    if "transformation" not in values or "source" not in values:
+        return values
+    source = _ensure_source_format(cls, values["source"])
+    _, location = source.split(".", maxsplit=1)
+    values["transformation"]["location"] = location
+    return values
+
+
+def _ensure_transformation_for_resources(
+    cls, v: Optional[Type[BaseModel]], values: Dict[str, Any]
+):
+    if "source" not in values:
+        return v
+    namespace, _ = values["source"].split(".", maxsplit=1)
+    if namespace == SourceNS.resources and not v:
+        raise ValueError(f"need transformation for source '{values['source']}'")
+    return v
 
 
 class Output(_EnsembleConfig):
@@ -74,14 +97,73 @@ class Output(_EnsembleConfig):
 
 class EnsembleConfig(_EnsembleConfig):
     forward_model: ForwardModel
-    input: Tuple[Input, ...]
     output: Tuple[Output, ...]
     size: Optional[int] = None
     storage_type: str = "ert_storage"
 
 
-def load_ensemble_config(config_dict: Dict[str, Any]) -> EnsembleConfig:
+def create_ensemble_config(
+    plugin_registry: ConfigPluginRegistry,
+) -> Type[EnsembleConfig]:
+    transformation = plugin_registry.get_field("transformation")
+    transformation_type = plugin_registry.get_type("transformation")
+    is_optional = transformation.default != Ellipsis
+    input_fields: Dict[str, Any] = {
+        "record": (str, ...),
+        "source": (str, ...),
+        "transformation": (transformation_type, transformation),
+        "direction": (
+            ert.data.RecordTransformationDirectionality,
+            # We know, since this is _input_, that we're always going in the TO_RECORD
+            # direction.
+            ert.data.RecordTransformationDirectionality.TO_RECORD,
+        ),
+    }
+
+    input_config = create_model(
+        "Input",
+        __base__=_Input,
+        __module__=__name__,
+        __validators__={
+            "split_source": validator("source", allow_reuse=True)(
+                _ensure_source_format
+            ),
+            "inject_location": root_validator(pre=True, allow_reuse=True)(
+                _inject_location
+            ),
+            "ensure_transformation_for_resource": validator(
+                "transformation", allow_reuse=True
+            )(_ensure_transformation_for_resources),
+        },
+        **input_fields,
+    )
+
+    setattr(
+        input_config,
+        "get_transformation_instance",
+        partialmethod(
+            getter_template,
+            category="transformation",
+            optional=is_optional,
+            plugin_registry=plugin_registry,
+        ),
+    )
+
+    ensemble_config = create_model(
+        "PluggedEnsembleConfig",
+        __base__=EnsembleConfig,
+        __module__=__name__,
+        input=(Tuple[input_config, ...], ...),
+    )
+
+    return ensemble_config
+
+
+def load_ensemble_config(
+    config_dict: Dict[str, Any], plugin_registry: ConfigPluginRegistry
+) -> EnsembleConfig:
     try:
-        return EnsembleConfig(**config_dict)
+        ensemble_config = create_ensemble_config(plugin_registry=plugin_registry)
+        return ensemble_config.parse_obj(config_dict)
     except ValidationError as err:
         raise ert.exceptions.ConfigValidationError(str(err), source="ensemble")

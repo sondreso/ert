@@ -26,7 +26,7 @@ from pydantic import (
 
 
 import ert
-from ._config_plugin_registry import ConfigPluginRegistry
+from ._config_plugin_registry import ConfigPluginRegistry, getter_template
 
 from ._validator import ensure_mime
 
@@ -82,34 +82,14 @@ def _valid_direction(cls, v: str) -> ert.data.RecordTransformationDirectionality
 
 
 def create_stage_io(plugin_registry: ConfigPluginRegistry) -> Type[BaseModel]:
-    def getter_template(self, category: str, optional: bool):
-        config_instance = getattr(self, category)
-        if optional and not config_instance:
-            return None
-        elif not optional and not config_instance:
-            raise ValueError(
-                "no config, but was required for '{category}' configuration"
-            )
-        descriminator_value = getattr(
-            config_instance, plugin_registry.get_descriminator(category=category)
-        )
-        return plugin_registry.get_factory(category=category, name=descriminator_value)(
-            config_instance, parent_config=self
-        )
-
-    stage_io_fields: Any = {
+    transformation = plugin_registry.get_field("transformation")
+    transformation_type = plugin_registry.get_type("transformation")
+    is_optional = transformation.default != Ellipsis
+    fields: Dict[str, Any] = {
         "name": (str, None),
         "direction": (ert.data.RecordTransformationDirectionality, ...),
+        "transformation": (transformation_type, transformation),
     }
-    stage_io_methods = {}
-    for category in ["transformation"]:
-        field = plugin_registry.get_field(category)
-        stage_io_fields[category] = (plugin_registry.get_type(category), field)
-
-        is_optional = field.default != Ellipsis
-        stage_io_methods[f"get_{category}_instance"] = partialmethod(
-            getter_template, category=category, optional=is_optional
-        )
 
     stage_io = create_model(
         "StageIO",
@@ -120,11 +100,19 @@ def create_stage_io(plugin_registry: ConfigPluginRegistry) -> Type[BaseModel]:
                 "direction", pre=True, always=True, allow_reuse=True
             )(_valid_direction)
         },
-        **stage_io_fields,
+        **fields,
     )
 
-    for name, method in stage_io_methods.items():
-        setattr(stage_io, name, method)
+    setattr(
+        stage_io,
+        "get_transformation_instance",
+        partialmethod(
+            getter_template,
+            category="transformation",
+            optional=is_optional,
+            plugin_registry=plugin_registry,
+        ),
+    )
 
     return stage_io
 
@@ -152,7 +140,6 @@ def _create_io_mapping(
     ios: List[Dict[str, str]],
     direction: str,
 ) -> Mapping[str, Type[_StagesConfig]]:
-    print("direction", direction, type(ios), ios)
     if not cls._stageio_cls:
         raise RuntimeError(
             "Step configuration must be obtained through 'create_stages_config'."

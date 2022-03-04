@@ -19,67 +19,85 @@ _EXPERIMENTS_BASE = ert3.workspace._workspace._EXPERIMENTS_BASE
 
 
 @pytest.fixture()
-def sensitivity_ensemble(base_ensemble_dict):
+def sensitivity_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict.pop("size")
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def uniform_ensemble(base_ensemble_dict):
+def uniform_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["input"][0]["source"] = "stochastic.uniform_coefficients"
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def x_uncertainty_ensemble(base_ensemble_dict):
+def x_uncertainty_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["forward_model"]["stage"] = "evaluate_x_uncertainty_polynomial"
     base_ensemble_dict["input"].append(
         {"record": "x_uncertainties", "source": "stochastic.x_normals"}
     )
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def presampled_uniform_ensemble(base_ensemble_dict):
+def presampled_uniform_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["input"][0]["source"] = "storage.uniform_coefficients0"
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def presampled_ensemble(base_ensemble_dict):
+def presampled_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["input"][0]["source"] = "storage.coefficients0"
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def doe_ensemble(base_ensemble_dict):
+def doe_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["input"][0]["source"] = "storage.designed_coefficients"
     base_ensemble_dict["size"] = 10
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def big_ensemble(base_ensemble_dict):
+def big_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["input"][0]["source"] = "storage.coefficients0"
     base_ensemble_dict["size"] = 1000
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def presampled_big_ensemble(base_ensemble_dict):
+def presampled_big_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict["input"][0]["source"] = "storage.uniform_coefficients0"
     base_ensemble_dict["size"] = 1000
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
-def partial_sensitivity_ensemble(base_ensemble_dict):
+def partial_sensitivity_ensemble(base_ensemble_dict, plugin_registry):
     base_ensemble_dict.pop("size")
     base_ensemble_dict["input"].append(
         {"record": "other_coefficients", "source": "storage.other_coefficients"}
     )
     base_ensemble_dict["output"].append({"record": "other_polynomial_output"})
-    yield ert3.config.load_ensemble_config(base_ensemble_dict)
+    yield ert3.config.load_ensemble_config(
+        base_ensemble_dict, plugin_registry=plugin_registry
+    )
 
 
 @pytest.fixture()
@@ -504,8 +522,7 @@ def test_record_load_and_run(
     workspace = workspace_integration
     with assert_clean_workspace(workspace):
         transformation = ert.data.SerializationTransformation(
-            location=designed_coeffs_record_file_integration,
-            mime="application/json"
+            location=designed_coeffs_record_file_integration, mime="application/json"
         )
         get_event_loop().run_until_complete(
             ert3.engine.load_record(

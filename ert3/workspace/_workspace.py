@@ -143,7 +143,9 @@ class Workspace:
         )
         with open(ensemble_config_path, encoding="utf-8") as f:
             config_dict = yaml.safe_load(f)
-        ensemble_config = ert3.config.load_ensemble_config(config_dict)
+        ensemble_config = ert3.config.load_ensemble_config(
+            config_dict, plugin_registry=plugin_registry
+        )
         self._validate_resources(ensemble_config)
 
         parameters_config_path = self._path / "parameters.yml"
@@ -171,6 +173,12 @@ class Workspace:
         linked_input: ert3.config.LinkedInput,
         ensemble_size: int = 1,
     ) -> ert.data.RecordCollection:
+        assert (
+            linked_input.transformation
+        ), f"cannot load resource: no transformation for '{linked_input.name}'"
+        assert isinstance(
+            linked_input.transformation, ert.data.FileTransformation
+        ), f"cannot load resource: not a file-based transformation for '{linked_input.name}'"
         return await ert.data.load_collection_from_file(
             transformation=linked_input.transformation,
             length=ensemble_size,
@@ -207,7 +215,7 @@ class Workspace:
         resource_inputs = [
             item
             for item in ensemble_config.input
-            if item.source_namespace == "resources"
+            if item.source_namespace == ert3.config.SourceNS.resources
         ]
         for resource in resource_inputs:
             path = self._path / _RESOURCES_BASE / resource.source_location
@@ -215,15 +223,22 @@ class Workspace:
                 raise ert.exceptions.ConfigValidationError(
                     f"Cannot locate resource: '{resource.source_location}'"
                 )
-            if resource.is_directory is not None:
-                if resource.is_directory and not path.is_dir():
-                    raise ert.exceptions.ConfigValidationError(
-                        f"Resource must be a directory: '{resource.source_location}'"
-                    )
-                if not resource.is_directory and path.is_dir():
-                    raise ert.exceptions.ConfigValidationError(
-                        f"Resource must be a regular file: '{resource.source_location}'"
-                    )
+            if not resource.transformation:
+                return
+            transformation_instance = resource.get_transformation_instance()
+            if (
+                isinstance(transformation_instance, ert.data.TarTransformation)
+                and not path.is_dir()
+            ):
+                raise ert.exceptions.ConfigValidationError(
+                    f"Resource must be a directory: '{resource.source_location}'"
+                )
+            if path.is_dir() and not isinstance(
+                transformation_instance, ert.data.TarTransformation
+            ):
+                raise ert.exceptions.ConfigValidationError(
+                    f"Resource must be a regular file: '{resource.source_location}'"
+                )
 
 
 def initialize(path: Union[str, Path]) -> Workspace:

@@ -1,6 +1,16 @@
 import importlib
 from collections import defaultdict
-from typing import Any, Callable, DefaultDict, Dict, NamedTuple, Optional, Type, Union
+from typing import (
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Type,
+    Union,
+)
 from typing_extensions import Literal
 
 from pydantic import BaseModel, Field, create_model
@@ -93,3 +103,19 @@ class ConfigPluginRegistry:
             return Field(
                 self._default[category], discriminator=self._descriminator[category]
             )
+
+
+def getter_template(
+    self, category: str, optional: bool, plugin_registry: ConfigPluginRegistry
+):
+    config_instance = getattr(self, category)
+    if optional and not config_instance:
+        return None
+    elif not optional and not config_instance:
+        raise ValueError("no config, but was required for '{category}' configuration")
+    descriminator_value = getattr(
+        config_instance, plugin_registry.get_descriminator(category=category)
+    )
+    return plugin_registry.get_factory(category=category, name=descriminator_value)(
+        config_instance, parent_config=self
+    )
