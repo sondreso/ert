@@ -23,3 +23,4 @@ sphinx
 sphinx_rtd_theme
 sphinx-argparse
 sphinx-autoapi
+sphinxcontrib.datatemplates
