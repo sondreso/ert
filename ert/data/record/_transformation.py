@@ -26,7 +26,7 @@ class RecordTransformationDirectionality(Flag):
     """Defines how transformations map from files to records, and/or the inverse.
     NONE: Cannot transform records.
     FROM_RECORD: Can transform from record to e.g. a file.
-    TO_RECORD: Can transform to record a record from e.g. a file.
+    TO_RECORD: Can transform to record from e.g. a file.
     BIDIRECTIONAL: Can transform both ways.
     """
 
@@ -100,12 +100,14 @@ class RecordTransformation(ABC):
     """:class:`RecordTransformation` is an abstract class that handles
     custom save and load operations on Records to and from disk.
 
-    The direction parameter can be used to point the transformation in
-    a specific direction. This direction will then be compared to the
-    transformation's DIRECTIONALITY, which constraints the transformation
-    to a specific direction, no direction or both (from/to). This aids
-    validation where direction is known, and actual transformation is
-    deferred.
+    The direction parameter can be used to point the transformation in a
+    specific direction. This direction will then be compared to the
+    transformation's DIRECTIONALITY, which constraints the transformation to a
+    specific direction, no direction or both. This aids validation where
+    direction is known, and actual transformation is deferred.
+
+    Affinity indicates what kind of data this transformation is likely to
+    produce: opaque (blob data) or numerical data.
     """
 
     DIRECTIONALITY = RecordTransformationDirectionality.NONE
