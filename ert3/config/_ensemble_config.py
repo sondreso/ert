@@ -35,51 +35,6 @@ class ForwardModel(_EnsembleConfig):
     driver: Literal["local", "pbs"] = "local"
 
 
-class _Input(_EnsembleConfig):
-    _namespace: SourceNS
-    _location: str
-
-    @no_type_check
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-        if not "source" in data:
-            raise RuntimeError(
-                "The input configuration must be obtained via 'create_ensemble_config'"
-            )
-        parts = data["source"].split(".", maxsplit=1)
-        self._namespace = SourceNS(parts[0])
-        self._location = parts[1]
-
-    @property
-    def source_namespace(self) -> SourceNS:
-        return self._namespace
-
-    @property
-    def source_location(self) -> str:
-        return self._location
-
-
-def _ensure_source_format(cls, v: str) -> str:
-    parts = v.split(".", maxsplit=1)
-    if not len(parts) == 2:
-        raise ValueError(f"{v} missing at least one dot (.) to form a namespace")
-    return v
-
-
-def _inject_location(cls, values: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    'location' will be defined as whatever comes after 'resources.' in
-    the 'source' value. This is injected into a transformation should it
-    exist.
-    """
-    if "transformation" not in values or "source" not in values:
-        return values
-    source = _ensure_source_format(cls, values["source"])
-    _, location = source.split(".", maxsplit=1)
-    values["transformation"]["location"] = location
-    return values
-
-
 def _ensure_transformation_for_resources(
     cls, v: Optional[Type[BaseModel]], values: Dict[str, Any]
 ):
@@ -91,12 +46,66 @@ def _ensure_transformation_for_resources(
     return v
 
 
+class Input(_EnsembleConfig):
+    _namespace: SourceNS
+    _location: str
+    record: str
+    source: str
+
+    @no_type_check
+    def __init__(self, **data: Any) -> None:
+        super().__init__(**data)
+        if "source" not in data:
+            raise RuntimeError(
+                "The input configuration must be obtained via 'create_ensemble_config'"
+            )
+        parts = data["source"].split(".", maxsplit=1)
+        self._namespace = SourceNS(parts[0])
+        self._location = parts[1]
+
+    @validator("source")
+    def _ensure_source_format(cls, v: str) -> str:
+        parts = v.split(".", maxsplit=1)
+        if not len(parts) == 2:
+            raise ValueError(f"{v} missing at least one dot (.) to form a namespace")
+        return v
+
+    @root_validator(pre=True)
+    def _inject_location(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        'location' will be defined as whatever comes after 'resources.' in
+        the 'source' value. This is injected into a transformation should it
+        exist.
+        """
+        if "transformation" not in values or "source" not in values:
+            return values
+        source = cls._ensure_source_format(values["source"])
+        _, location = source.split(".", maxsplit=1)
+        values["transformation"]["location"] = location
+        return values
+
+    @property
+    def source_namespace(self) -> SourceNS:
+        return self._namespace
+
+    @property
+    def source_location(self) -> str:
+        return self._location
+
+    @property
+    def direction(self):
+        # We know, since this is _input_, that we're always going in the
+        # TO_RECORD direction.
+        return ert.data.RecordTransformationDirectionality.TO_RECORD
+
+
 class Output(_EnsembleConfig):
     record: str
 
 
 class EnsembleConfig(_EnsembleConfig):
     forward_model: ForwardModel
+    input: Tuple[Input, ...]
     output: Tuple[Output, ...]
     size: Optional[int] = None
     storage_type: str = "ert_storage"
@@ -109,28 +118,14 @@ def create_ensemble_config(
     transformation_type = plugin_registry.get_type("transformation")
     is_optional = transformation.default != Ellipsis
     input_fields: Dict[str, Any] = {
-        "record": (str, ...),
-        "source": (str, ...),
         "transformation": (transformation_type, transformation),
-        "direction": (
-            ert.data.RecordTransformationDirectionality,
-            # We know, since this is _input_, that we're always going in the TO_RECORD
-            # direction.
-            ert.data.RecordTransformationDirectionality.TO_RECORD,
-        ),
     }
 
     input_config = create_model(
-        "Input",
-        __base__=_Input,
+        "PluggedInput",
+        __base__=Input,
         __module__=__name__,
         __validators__={
-            "split_source": validator("source", allow_reuse=True)(
-                _ensure_source_format
-            ),
-            "inject_location": root_validator(pre=True, allow_reuse=True)(
-                _inject_location
-            ),
             "ensure_transformation_for_resource": validator(
                 "transformation", allow_reuse=True
             )(_ensure_transformation_for_resources),

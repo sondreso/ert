@@ -173,14 +173,15 @@ class Workspace:
         linked_input: ert3.config.LinkedInput,
         ensemble_size: int = 1,
     ) -> ert.data.RecordCollection:
+        transformation = linked_input.source_transformation
         assert (
-            linked_input.transformation
-        ), f"cannot load resource: no transformation for '{linked_input.name}'"
+            transformation
+        ), f"cannot load resource: no source transformation for '{linked_input.name}'"
         assert isinstance(
-            linked_input.transformation, ert.data.FileTransformation
+            transformation, ert.data.FileTransformation
         ), f"cannot load resource: not a file-based transformation for '{linked_input.name}'"
         return await ert.data.load_collection_from_file(
-            transformation=linked_input.transformation,
+            transformation=transformation,
             length=ensemble_size,
             root_path=self._path / _RESOURCES_BASE,
         )

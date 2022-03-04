@@ -25,7 +25,8 @@ class LinkedInput(NamedTuple):
     name: str
     source_namespace: SourceNS
     source_location: str
-    transformation: Optional[ert.data.RecordTransformation]
+    source_transformation: Optional[ert.data.RecordTransformation]
+    stage_transformation: Optional[ert.data.RecordTransformation]
 
 
 class ExperimentRunConfig:
@@ -129,14 +130,19 @@ class ExperimentRunConfig:
         for ensemble_input in self._ensemble_config.input:
             name = ensemble_input.record
 
-            transformation: Optional[ert.data.RecordTransformation] = (
+            stage_transformation: Optional[ert.data.RecordTransformation] = (
                 stage.input[name].get_transformation_instance()
                 if stage.input[name].transformation
                 else None
             )
+            source_transformation: Optional[ert.data.RecordTransformation] = (
+                ensemble_input.get_transformation_instance()
+                if ensemble_input.transformation
+                else None
+            )
             if (
                 ensemble_input.source_namespace == SourceNS.resources
-                and not transformation
+                and not source_transformation
             ):
                 raise ert.exceptions.ConfigValidationError(
                     f"no transformation for resource {name}"
@@ -146,7 +152,8 @@ class ExperimentRunConfig:
                 name=name,
                 source_namespace=ensemble_input.source_namespace,
                 source_location=ensemble_input.source_location,
-                transformation=transformation,
+                source_transformation=source_transformation,
+                stage_transformation=stage_transformation,
             )
             inputs[input_.source_namespace][input_.name] = input_
         return inputs

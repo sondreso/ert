@@ -129,6 +129,11 @@ class RecordTransformation(ABC):
     async def to_record(self, root_path: Path = Path()) -> Record:
         pass
 
+    @property
+    @abstractmethod
+    def affinity(self) -> RecordTransformationAffinity:
+        pass
+
 
 class FileTransformation(RecordTransformation):
 
@@ -145,7 +150,7 @@ class FileTransformation(RecordTransformation):
             mime = self.MIME
         self.mime = mime
         self.location = location
-        self.affinity = self._infer_record_affinity()
+        self._affinity = self._infer_record_affinity()
 
     async def from_record(self, record: Record, root_path: Path = Path()) -> None:
         raise NotImplementedError("not implemented")
@@ -157,6 +162,10 @@ class FileTransformation(RecordTransformation):
         if has_serializer(self.mime) or self.mime == EclSumTransformation.MIME:
             return RecordTransformationAffinity.NON_OPAQUE
         return RecordTransformationAffinity.OPAQUE
+
+    @property
+    def affinity(self) -> RecordTransformationAffinity:
+        return self._affinity
 
 
 class SerializationTransformation(FileTransformation):

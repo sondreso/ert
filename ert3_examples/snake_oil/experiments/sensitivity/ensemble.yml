@@ -34,9 +34,13 @@ input:
   -
     source: resources.seed_tmpl
     record: seed_tmpl
+    transformation:
+      type: serialization
   -
     source: resources.snake_oil_txt_tmpl
     record: snake_oil_params_txt_tmpl
+    transformation:
+      type: serialization
 
 output:
   -

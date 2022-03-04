@@ -29,7 +29,7 @@ def add_step_inputs(
         step_input = (
             create_input_builder()
             .set_name(input_.name)
-            .set_transformation(input_.transformation)
+            .set_transformation(input_.stage_transformation)
         )
 
         for iens, io_to_transmitter in transmitters.items():
