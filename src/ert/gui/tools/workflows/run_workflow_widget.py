@@ -43,7 +43,7 @@ class RunWorkflowWidget(QWidget):
         layout.addSpacing(20)
 
         self.run_button = QToolButton()
-        self.run_button.setIconSize(QSize(32, 32))
+        self.run_button.setIconSize(QSize(18, 18))
         self.run_button.setText("Start workflow")
         self.run_button.setIcon(resourceIcon("play_circle.svg"))
         self.run_button.clicked.connect(self.startWorkflow)

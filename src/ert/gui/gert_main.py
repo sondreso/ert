@@ -18,7 +18,9 @@ import logging
 import os
 import sys
 
+from qtpy import QtGui
 from qtpy.QtCore import QLocale, Qt
+from qtpy.QtGui import QColor, QFont, QPalette
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from ert._c_wrappers.enkf import EnKFMain, ResConfig
@@ -44,6 +46,90 @@ from ert.shared.services import Storage
 
 def run_gui(args):
     app = QApplication([])  # Early so that QT is initialized before other imports
+    QtGui.QFontDatabase.addApplicationFont('fonts/Equinor-Regular.otf')
+    QtGui.QFontDatabase.addApplicationFont('fonts/Equinor-Bold.otf')
+    font = QFont()
+    font.setFamily(u"Equinor")
+    font.setPointSize(10)
+    app.setFont(font)
+
+
+    eq_background_default = QColor(255, 255, 255)
+    eq_background_light = QColor(247, 247, 247)
+    eq_background_medium = QColor(220, 220, 220)
+
+    eq_text_default = QColor(61, 61, 61)
+    eq_text_primary_white = QColor(255, 255, 255)
+
+    eq_interactive_resting = QColor(0, 112, 121)
+    eq_interactive_hover = QColor(0, 79, 85)
+
+    palette = QPalette()
+    palette.setColor(QPalette.Window, eq_background_default)
+    palette.setColor(QPalette.WindowText, eq_text_default)
+    palette.setColor(QPalette.Base, eq_background_light)
+    palette.setColor(QPalette.AlternateBase, eq_background_medium)
+
+    # palette.setColor(QPalette.ToolTipBase, Qt.white)
+    # palette.setColor(QPalette.ToolTipText, eq_text_default)
+
+    palette.setColor(QPalette.Text, eq_text_default)
+    palette.setColor(QPalette.HighlightedText, eq_text_default)
+
+    # palette.setColor(QPalette.Button, eq_interactive_resting)
+    # palette.setColor(QPalette.ButtonText, eq_text_primary_white)
+    # palette.setColor(QPalette.BrightText, eq_text_default)
+
+    # palette.setColor(QPalette.Link, eq_interactive_resting)
+
+    # palette.setColor(QPalette.Highlight, eq_interactive_hover)
+
+    # palette.setColor(QPalette.Light, eq_interactive_resting)
+    # palette.setColor(QPalette.Midlight, eq_interactive_resting)
+    # palette.setColor(QPalette.Dark, eq_interactive_resting)
+    # palette.setColor(QPalette.Mid, eq_interactive_resting)
+    # palette.setColor(QPalette.Shadow, eq_interactive_resting)
+
+    app.setPalette(palette)
+    eq_style_sheet = """
+    QPushButton, QAbstractButton {
+        background-color: #007079;
+        color: #FFFFFF;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        padding-left: 16px;
+        padding-right: 16px;
+        border-width: 1px;
+        border-color: #007079;
+        border-radius: 4px;
+    }
+    QPushButton:hover, QAbstractButton:hover {
+        background-color: #004F55;
+    }
+    QComboBox {
+        background-color: #F7F7F7;
+        border-style: none;
+        border-bottom: 1px solid #3D3D3D;
+        padding: 4px;
+    }
+    QComboBox:item {
+        background-color: #FFFFFF;
+    }
+
+    QComboBox:item:selected {
+        background-color: #DCDCDC;
+    }
+
+    QComboBox:item::hover {
+        background-color: #DCDCDC;
+    }
+
+    QComboBox::down-arrow {
+    }
+
+    """
+    app.setStyleSheet(eq_style_sheet)
+
     app.setWindowIcon(resourceIcon("application/window_icon_cutout"))
     res_config = ResConfig(args.config)
 
