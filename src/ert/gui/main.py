@@ -1,10 +1,11 @@
 import functools
 import logging
 import os
+from pathlib import Path
 import warnings
 import webbrowser
 from signal import SIG_DFL, SIGINT, signal
-from typing import Optional, cast
+from typing import List, Optional, Tuple, cast
 
 from PyQt5.QtGui import QIcon
 from qtpy.QtCore import QDir, QLocale, QSize, Qt
@@ -41,8 +42,15 @@ from ert.libres_facade import LibresFacade
 from ert.namespace import Namespace
 from ert.services import StorageService
 from ert.shared.plugins.plugin_manager import ErtPluginManager
-from ert.storage import open_storage
+from ert.storage import StorageReader, open_storage
 from ert.storage.local_storage import local_storage_set_ert_config
+
+
+def show_window(app, window):
+    window.show()
+    window.activateWindow()
+    window.raise_()
+    return app.exec_()
 
 
 def run_gui(args: Namespace, plugin_manager: Optional[ErtPluginManager] = None):
@@ -61,35 +69,41 @@ def run_gui(args: Namespace, plugin_manager: Optional[ErtPluginManager] = None):
 
     app = QApplication([])  # Early so that QT is initialized before other imports
     app.setWindowIcon(QIcon("img:application/window_icon_cutout"))
+    mode = "r" if args.read_only else "w" # TODO does this have any effect??
     with add_gui_log_handler() as log_handler:
-        window, ens_path, ensemble_size, parameter_config = _start_initial_gui_window(
-            args, log_handler, plugin_manager
+        ert, ert_config, error_messages, config_warnings, deprecations = _check_config(
+            args.config
         )
 
-        def show_window():
-            window.show()
-            window.activateWindow()
-            window.raise_()
-            return app.exec_()
+        if ert is None:
+            suggester_window = _setup_suggester(
+                error_messages,
+                config_warnings,
+                deprecations,
+                plugin_manager=plugin_manager,
+            )
+            return show_window(app, suggester_window)
 
-        # ens_path is None indicates that there was an error in the setup and
-        # window is now just showing that error message, in which
-        # case display it and don't show an error message
-        if ens_path is None:
-            return show_window()
+        with open_storage(ert_config.ens_path, mode="r") as storage:
+            _main_window = _setup_main_window(ert, args, storage, log_handler)
+            _main_window.notifier.set_storage(storage)
+            show_window(
+                app,
+                _setup_suggester(
+                    error_messages,
+                    config_warnings,
+                    deprecations,
+                    _main_window,
+                    plugin_manager=plugin_manager,
+                )
+                if deprecations or config_warnings
+                else _main_window,
+            )
 
-        mode = "r" if args.read_only else "w"
-        with StorageService.init_service(
-            ert_config=args.config, project=os.path.abspath(ens_path)
-        ), open_storage(ens_path, mode=mode) as storage:
-            if hasattr(window, "notifier"):
-                window.notifier.set_storage(storage)
-            return show_window()
 
-
-def _start_initial_gui_window(
-    args, log_handler, plugin_manager: Optional[ErtPluginManager] = None
-):
+def _check_config(
+    config_file: Path,
+) -> Tuple[Optional[EnKFMain], Optional[ErtConfig], List[str], List[str], List[str]]:
     # Create logger inside function to make sure all handlers have been added to
     # the root-logger.
     logger = logging.getLogger(__name__)
@@ -97,19 +111,23 @@ def _start_initial_gui_window(
     all_warnings = []
     config_warnings = []
     ert_config = None
+    ert = None
 
     with warnings.catch_warnings(record=True) as all_warnings:
         try:
             _check_locale()
-            ert_dir = os.path.abspath(os.path.dirname(args.config))
+            ert_dir = os.path.abspath(os.path.dirname(config_file))
             os.chdir(ert_dir)
             # Changing current working directory means we need to update
             # the config file to be the base name of the original config
-            args.config = os.path.basename(args.config)
-            ert_config = ErtConfig.from_file(args.config)
+            config_file = os.path.basename(config_file)
+            ert_config = ErtConfig.from_file(config_file)
             local_storage_set_ert_config(ert_config)
             ert = EnKFMain(ert_config)
         except ConfigValidationError as error:
+            error_messages += error.messages()
+            logger.info("Error in config file shown in gui: '%s'", str(error))
+        finally:
             config_warnings = [
                 str(w.message)
                 for w in all_warnings
@@ -122,31 +140,6 @@ def _start_initial_gui_window(
                 if w.category == ConfigWarning
                 and cast(ConfigWarning, w.message).info.is_deprecation
             ]
-            error_messages += error.messages()
-            logger.info("Error in config file shown in gui: '%s'", str(error))
-            return (
-                _setup_suggester(
-                    error_messages,
-                    config_warnings,
-                    deprecations,
-                    plugin_manager=plugin_manager,
-                ),
-                None,
-                None,
-                None,
-            )
-    config_warnings = [
-        str(w.message)
-        for w in all_warnings
-        if w.category == ConfigWarning
-        and not cast(ConfigWarning, w.message).info.is_deprecation
-    ]
-    deprecations = [
-        str(w.message)
-        for w in all_warnings
-        if w.category == ConfigWarning
-        and cast(ConfigWarning, w.message).info.is_deprecation
-    ]
     for job in ert_config.forward_model_list:
         logger.info("Config contains forward model job %s", job.name)
 
@@ -157,27 +150,7 @@ def _start_initial_gui_window(
         logger.info("Suggestion shown in gui '%s'", msg)
     for msg in config_warnings:
         logger.info("Warning shown in gui '%s'", msg)
-    _main_window = _setup_main_window(ert, args, log_handler)
-    if deprecations or config_warnings:
-        return (
-            _setup_suggester(
-                error_messages,
-                config_warnings,
-                deprecations,
-                _main_window,
-                plugin_manager=plugin_manager,
-            ),
-            ert_config.ens_path,
-            ert_config.model_config.num_realizations,
-            ert_config.ensemble_config.parameter_configuration,
-        )
-    else:
-        return (
-            _main_window,
-            ert_config.ens_path,
-            ert_config.model_config.num_realizations,
-            ert_config.ensemble_config.parameter_configuration,
-        )
+    return ert, ert_config, error_messages, config_warnings, deprecations
 
 
 def _check_locale():
@@ -323,6 +296,7 @@ def _setup_suggester(
 def _setup_main_window(
     ert: EnKFMain,
     args: Namespace,
+    storage: StorageReader,
     log_handler: GUILogHandler,
     plugin_manager: Optional[ErtPluginManager] = None,
 ):
@@ -331,7 +305,11 @@ def _setup_main_window(
     config_file = args.config
     config = ert.ert_config
     window = ErtMainWindow(config_file, plugin_manager)
-    window.setWidget(SimulationPanel(ert, window.notifier, config_file))
+
+    plot_tool = PlotTool(config_file, storage, window)
+    window.setWidget(
+        SimulationPanel(ert, window.notifier, config_file, plot_tool.trigger)
+    )
     plugin_handler = PluginHandler(
         ert,
         window.notifier,
@@ -342,7 +320,7 @@ def _setup_main_window(
     window.addDock(
         "Configuration summary", SummaryPanel(ert), area=Qt.BottomDockWidgetArea
     )
-    window.addTool(PlotTool(config_file, window))
+    window.addTool(plot_tool)
     window.addTool(ExportTool(ert, window.notifier))
     window.addTool(WorkflowsTool(ert, window.notifier))
     window.addTool(

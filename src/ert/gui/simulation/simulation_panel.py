@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QIcon
@@ -36,13 +36,20 @@ EXPERIMENT_IS_RUNNING_BUTTON_MESSAGE = "Experiment running..."
 
 
 class SimulationPanel(QWidget):
-    def __init__(self, ert: EnKFMain, notifier: ErtNotifier, config_file: str):
+    def __init__(
+        self,
+        ert: EnKFMain,
+        notifier: ErtNotifier,
+        config_file: str,
+        plot_tool_trigger: Callable[[], None],
+    ):
         QWidget.__init__(self)
         self._notifier = notifier
         self.ert = ert
         self.facade = LibresFacade(ert)
         ensemble_size = self.facade.get_ensemble_size()
         self._config_file = config_file
+        self._plot_tool_trigger = plot_tool_trigger
 
         self.setObjectName("Simulation_panel")
         layout = QVBoxLayout()
@@ -228,7 +235,11 @@ class SimulationPanel(QWidget):
                     QApplication.restoreOverrideCursor()
 
                 dialog = RunDialog(
-                    self._config_file, model, self._notifier, self.parent()
+                    self._config_file,
+                    model,
+                    self._notifier,
+                    self._plot_tool_trigger,
+                    self.parent(),
                 )
                 self.run_button.setEnabled(False)
                 self.run_button.setText(EXPERIMENT_IS_RUNNING_BUTTON_MESSAGE)

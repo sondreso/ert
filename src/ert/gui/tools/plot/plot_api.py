@@ -10,27 +10,32 @@ import requests
 from pandas.errors import ParserError
 
 from ert.services import StorageService
+from ert.storage import StorageReader
 
 logger = logging.getLogger(__name__)
 
 
 class PlotApi:
-    def __init__(self):
+    def __init__(self, storage):
+        print("Called: __init__")
         self._all_cases: List[dict] = None
         self._timeout = 120
+        self._storage: StorageReader = storage
         self._reset_storage_facade()
 
     def _reset_storage_facade(self):
-        with StorageService.session() as client:
-            client.post("/updates/facade", timeout=self._timeout)
+        print("Called: _reset_storage_facade")
+        self._storage.refresh()
 
     def _get_case(self, name: str) -> Optional[dict]:
+        print("Called: _get_case")
         for e in self._get_all_cases():
             if e["name"] == name:
                 return e
         return None
 
     def _get_all_cases(self) -> List[dict]:
+        print("Called: _get_all_cases")
         if self._all_cases is not None:
             return self._all_cases
 
@@ -62,6 +67,7 @@ class PlotApi:
 
     @staticmethod
     def _check_response(response: requests.Response):
+        print("Called: _check_response")
         if response.status_code != httpx.codes.OK:
             raise httpx.RequestError(
                 f" Please report this error and try restarting the application."
@@ -69,6 +75,7 @@ class PlotApi:
             )
 
     def _get_experiments(self) -> dict:
+        print("Called: _get_experiments")
         with StorageService.session() as client:
             response: requests.Response = client.get(
                 "/experiments", timeout=self._timeout
@@ -77,6 +84,7 @@ class PlotApi:
             return response.json()
 
     def _get_ensembles(self, experiement_id) -> List:
+        print("Called: _get_ensembles")
         with StorageService.session() as client:
             response: requests.Response = client.get(
                 f"/experiments/{experiement_id}/ensembles", timeout=self._timeout
@@ -92,6 +100,7 @@ class PlotApi:
 
         For each key a dict is returned with info about
         the key"""
+        print("Called: all_data_type_keys")
 
         all_keys = {}
         with StorageService.session() as client:
@@ -131,6 +140,7 @@ class PlotApi:
     def get_all_cases_not_running(self) -> List:
         """Returns a list of all cases that are not running. For each case a dict with
         info about the case is returned"""
+        print("Called: get_all_cases_not_running")
         # Currently, the ensemble information from the storage API does not contain any
         # hint if a case is running or not for now we return all the cases, running or
         # not
@@ -140,6 +150,7 @@ class PlotApi:
         """Returns a pandas DataFrame with the datapoints for a given key for a given
         case. The row index is the realization number, and the columns are an index
         over the indexes/dates"""
+        print("Called: data_for_key")
 
         if key.startswith("LOG10_"):
             key = key[6:]
@@ -173,6 +184,7 @@ class PlotApi:
         is a multi-index with (obs_key, index/date, obs_index), where index/date is
         used to relate the observation to the data point it relates to, and obs_index
         is the index for the observation itself"""
+        print("Called: observations_for_key")
 
         case = self._get_case(case_name)
 
@@ -203,6 +215,7 @@ class PlotApi:
         """Returns a pandas DataFrame with the data points for the history for a
         given data key, if any.  The row index is the index/date and the column
         index is the key."""
+        print("Called: history_data")
 
         if ":" in key:
             head, tail = key.split(":", 2)

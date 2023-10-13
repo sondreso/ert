@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class PlotWindow(QMainWindow):
-    def __init__(self, config_file, parent):
+    def __init__(self, config_file, storage, parent):
         QMainWindow.__init__(self, parent)
 
         logger.info("PlotWindow __init__")
@@ -53,7 +53,7 @@ class PlotWindow(QMainWindow):
 
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self._api = PlotApi()
+            self._api = PlotApi(storage)
             self._key_definitions = self._api.all_data_type_keys()
         except (RequestError, TimeoutError) as e:
             logger.exception(e)

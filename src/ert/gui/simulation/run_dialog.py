@@ -1,6 +1,6 @@
 import logging
 from threading import Thread
-from typing import Optional
+from typing import Callable, Optional
 
 from PyQt5.QtWidgets import QAbstractItemView
 from qtpy.QtCore import QModelIndex, QSize, Qt, QThread, QTimer, Signal, Slot
@@ -58,6 +58,7 @@ class RunDialog(QDialog):
         config_file: str,
         run_model: BaseRunModel,
         notifier: ErtNotifier,
+        plot_tool_trigger: Callable[[], None],
         parent=None,
     ):
         QDialog.__init__(self, parent)
@@ -116,9 +117,7 @@ class RunDialog(QDialog):
 
         self.running_time = QLabel("")
 
-        self.plot_tool = PlotTool(config_file, self.parent())
-        self.plot_button = QPushButton(self.plot_tool.getName())
-        self.plot_button.clicked.connect(self.plot_tool.trigger)
+        self.plot_button.clicked.connect(plot_tool_trigger)
         self.plot_button.setEnabled(True)
 
         self.kill_button = QPushButton("Terminate experiment")
