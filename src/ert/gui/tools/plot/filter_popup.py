@@ -37,6 +37,7 @@ class FilterPopup(QDialog):
         self.__layout.addWidget(QLabel("Filter by datatype:"))
 
         filters = {k["metadata"]["data_origin"] for k in key_defs}
+        print(filters)
         for f in filters:
             self.addFilterItem(f, f)
 
