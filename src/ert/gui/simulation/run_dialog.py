@@ -117,6 +117,7 @@ class RunDialog(QDialog):
 
         self.running_time = QLabel("")
 
+        self.plot_button = QPushButton("Create plot")
         self.plot_button.clicked.connect(plot_tool_trigger)
         self.plot_button.setEnabled(True)
 
