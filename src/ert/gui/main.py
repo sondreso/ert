@@ -69,7 +69,7 @@ def run_gui(args: Namespace, plugin_manager: Optional[ErtPluginManager] = None):
 
     app = QApplication([])  # Early so that QT is initialized before other imports
     app.setWindowIcon(QIcon("img:application/window_icon_cutout"))
-    mode = "r" if args.read_only else "w" # TODO does this have any effect??
+    mode = "r" if args.read_only else "w"  # TODO does this have any effect??
     with add_gui_log_handler() as log_handler:
         ert, ert_config, error_messages, config_warnings, deprecations = _check_config(
             args.config
@@ -84,9 +84,11 @@ def run_gui(args: Namespace, plugin_manager: Optional[ErtPluginManager] = None):
             )
             return show_window(app, suggester_window)
 
-        with open_storage(ert_config.ens_path, mode="r") as storage:
+        with open_storage(ert_config.ens_path, mode="r") as storage, open_storage(
+            ert_config.ens_path, mode="w"
+        ) as wstorage:
             _main_window = _setup_main_window(ert, args, storage, log_handler)
-            _main_window.notifier.set_storage(storage)
+            _main_window.notifier.set_storage(wstorage)
             show_window(
                 app,
                 _setup_suggester(
