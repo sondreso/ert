@@ -228,6 +228,7 @@ class PlotApi:
 
         case = self._get_case(case_name)
         ensemble = self._storage.get_ensemble(case["id"])
+        ensemble.experiment.observations[key]
 
         with StorageService.session() as client:
             response = client.get(
