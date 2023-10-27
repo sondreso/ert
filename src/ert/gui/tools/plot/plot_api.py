@@ -1,15 +1,9 @@
-import io
 import logging
 from itertools import combinations as combi
-from json.decoder import JSONDecodeError
 from typing import List, Optional
 
-import httpx
 import pandas as pd
-import requests
-from pandas.errors import ParserError
 
-from ert.services import StorageService
 from ert.storage import StorageReader
 
 logger = logging.getLogger(__name__)
@@ -46,31 +40,6 @@ class PlotApi:
                 }
             )
         return self._all_cases
-
-    @staticmethod
-    def _check_response(response: requests.Response):
-        if response.status_code != httpx.codes.OK:
-            raise httpx.RequestError(
-                f" Please report this error and try restarting the application."
-                f"{response.text} from url: {response.url}."
-            )
-
-    def _get_experiments(self) -> dict:
-        with StorageService.session() as client:
-            response: requests.Response = client.get(
-                "/experiments", timeout=self._timeout
-            )
-            self._check_response(response)
-            return response.json()
-
-    def _get_ensembles(self, experiement_id) -> List:
-        with StorageService.session() as client:
-            response: requests.Response = client.get(
-                f"/experiments/{experiement_id}/ensembles", timeout=self._timeout
-            )
-            self._check_response(response)
-            response_json = response.json()
-            return response_json
 
     def all_data_type_keys(self) -> List:
         """Returns a list of all the keys except observation keys.
