@@ -15,14 +15,15 @@ from ert.scheduler.event import FinishedEvent, StartedEvent
 
 _TERMINATE_TIMEOUT = 10.0
 
-logger = logging.getLogger(__name__)
-
+from opentelemetry import trace
 
 class LocalDriver(Driver):
     def __init__(self) -> None:
         super().__init__()
         self._tasks: MutableMapping[int, asyncio.Task[None]] = {}
         self._sent_finished_events: Set[int] = set()
+        self._current_span = trace.get_current_span()
+        print(self._current_span)
 
     async def submit(
         self,
@@ -41,27 +42,25 @@ class LocalDriver(Driver):
     async def kill(self, iens: int) -> None:
         try:
             self._tasks[iens].cancel()
-            logger.info(f"Killing realization {iens}")
+            self._current_span.add_event("log", {"log.severity": "info", "log.message": f"Killing realization {iens}"})
             with contextlib.suppress(asyncio.CancelledError):
                 await self._tasks[iens]
             del self._tasks[iens]
             await self._dispatch_finished_event(iens, signal.SIGTERM + SIGNAL_OFFSET)
 
         except KeyError:
-            logger.info(f"Realization {iens} is already killed")
+            self._current_span.add_event("log", {"log.severity": "info", "log.message": f"Realization {iens} is already killed"})
             return
         except Exception as err:
-            logger.error(f"Killing realization {iens} failed with error {err}")
+            self._current_span.add_event("log", {"log.severity": "error", "log.message": f"Killing realization {iens} failed with error {err}"})
             raise err
 
     async def finish(self) -> None:
         await asyncio.gather(*self._tasks.values())
-        logger.info("All realization tasks finished")
+        self._current_span.add_event("log", {"log.severity": "info", "log.message": "All realization tasks finished"})
 
     async def _run(self, iens: int, executable: str, /, *args: str) -> None:
-        logger.debug(
-            f"Submitting realization {iens} as command '{executable} {' '.join(args)}'"
-        )
+        self._current_span.add_event("log", {"log.severity": "debug", "log.message": f"Submitting realization {iens} as command '{executable} {' '.join(args)}'"})
         try:
             proc = await self._init(
                 iens,
@@ -72,7 +71,7 @@ class LocalDriver(Driver):
             # /bin/sh uses returncode 127 for FileNotFound, so copy that
             # behaviour.
             msg = f"Realization {iens} failed with {err}"
-            logger.error(msg)
+            self._current_span.add_event("log", {"log.severity": "error", "log.message": msg})
             self._job_error_message_by_iens[iens] = msg
             await self._dispatch_finished_event(iens, 127)
             return
@@ -82,7 +81,7 @@ class LocalDriver(Driver):
         returncode = 0
         try:
             returncode = await self._wait(proc)
-            logger.info(f"Realization {iens} finished with {returncode=}")
+            self._current_span.add_event("log", {"log.severity": "info", "log.message": f"Realization {iens} finished with {returncode=}"})
         except asyncio.CancelledError:
             returncode = await self._kill(proc)
         finally:

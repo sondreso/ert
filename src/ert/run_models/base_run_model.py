@@ -65,6 +65,9 @@ from ert.run_context import RunContext
 from ert.runpaths import Runpaths
 from ert.storage import Storage
 
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
 from .event import (
     RunModelDataEvent,
     RunModelErrorEvent,
@@ -316,29 +319,40 @@ class BaseRunModel:
     def start_simulations_thread(
         self, evaluator_server_config: EvaluatorServerConfig
     ) -> None:
-        try:
-            self.start_time = int(time.time())
-            with captured_logs(self._error_messages):
-                self._set_default_env_context()
-                self._initial_realizations_mask = (
-                    self._simulation_arguments.active_realizations
-                )
-                run_context = self.run_experiment(
-                    evaluator_server_config=evaluator_server_config,
-                )
-                self._completed_realizations_mask = run_context.mask
-        except ErtRunError as e:
-            self._completed_realizations_mask = []
-            self._failed = True
-            self._exception = e
-            self._simulationEnded()
-        except UserWarning as e:
-            self._exception = e
-            self._simulationEnded()
-        except Exception as e:
-            self._failed = True
-            self._exception = e
-            self._simulationEnded()
+        tracer = trace.get_tracer("ert.main")
+        with tracer.start_as_current_span("ert.run_model.start") as span:
+            try:
+                span.add_event("log", {"log.severity": "info", "log.message": f"Starting simulation thread {self.__class__.__name__}"})
+                self.start_time = int(time.time())
+                with captured_logs(self._error_messages):
+                    self._set_default_env_context()
+                    self._initial_realizations_mask = (
+                        self._simulation_arguments.active_realizations
+                    )
+                    run_context = self.run_experiment(
+                        evaluator_server_config=evaluator_server_config,
+                    )
+                    self._completed_realizations_mask = run_context.mask
+            except ErtRunError as e:
+                span.set_status(Status(StatusCode.ERROR))
+                span.record_exception(e)
+                span.add_event("log", {"log.severity": "exception", "log.message": f'Simulation ended with error "{e}"'})
+                self._completed_realizations_mask = []
+                self._failed = True
+                self._exception = e
+                self._simulationEnded()
+            except UserWarning as e:
+                span.record_exception(e)
+                span.add_event("log", {"log.severity": "exception", "log.message": f'Simulation ended with warning "{e}"'})
+                self._exception = e
+                self._simulationEnded()
+            except Exception as e:
+                span.set_status(Status(StatusCode.ERROR))
+                span.record_exception(e)
+                span.add_event("log", {"log.severity": "exception", "log.message": f'Simulation ended with error "{e}"'})
+                self._failed = True
+                self._exception = e
+                self._simulationEnded()
 
     def run_experiment(
         self, evaluator_server_config: EvaluatorServerConfig
@@ -541,37 +555,39 @@ class BaseRunModel:
     def run_ensemble_evaluator(
         self, run_context: RunContext, ee_config: EvaluatorServerConfig
     ) -> List[int]:
-        if not self._end_queue.empty():
-            event_logger.debug("Run model canceled - pre evaluation")
-            self._end_queue.get()
-            return []
-        ensemble = self._build_ensemble(run_context)
-        evaluator = EnsembleEvaluator(
-            ensemble,
-            ee_config,
-            run_context.iteration,
-        )
-        evaluator.start_running()
+        tracer = trace.get_tracer("ert.main")
+        with tracer.start_as_current_span("ert.run_model.run_ensemble") as span:
+            if not self._end_queue.empty():
+                event_logger.debug("Run model canceled - pre evaluation")
+                self._end_queue.get()
+                return []
+            ensemble = self._build_ensemble(run_context)
+            evaluator = EnsembleEvaluator(
+                ensemble,
+                ee_config,
+                run_context.iteration,
+            )
+            evaluator.start_running()
 
-        if not get_running_loop().run_until_complete(self.run_monitor(ee_config)):
-            return []
+            if not get_running_loop().run_until_complete(self.run_monitor(ee_config)):
+                return []
 
-        event_logger.debug(
-            "observed that model was finished, waiting tasks completion..."
-        )
-        # The model has finished, we indicate this by sending a DONE
-        event_logger.debug("tasks complete")
+            event_logger.debug(
+                "observed that model was finished, waiting tasks completion..."
+            )
+            # The model has finished, we indicate this by sending a DONE
+            event_logger.debug("tasks complete")
 
-        evaluator.join()
-        if not self._end_queue.empty():
-            event_logger.debug("Run model canceled - post evaluation")
-            self._end_queue.get()
-            return []
+            evaluator.join()
+            if not self._end_queue.empty():
+                event_logger.debug("Run model canceled - post evaluation")
+                self._end_queue.get()
+                return []
 
-        run_context.ensemble.unify_parameters()
-        run_context.ensemble.unify_responses()
+            run_context.ensemble.unify_parameters()
+            run_context.ensemble.unify_responses()
 
-        return evaluator.get_successful_realizations()
+            return evaluator.get_successful_realizations()
 
     def _build_ensemble(
         self,
