@@ -191,13 +191,12 @@ class ExperimentPanel(QWidget):
     def run_experiment(self) -> None:
         args = self.get_experiment_arguments()
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        event_queue: SimpleQueue[StatusEvents] = SimpleQueue()
         try:
             model = create_model(
                 self.config,
                 self._notifier.storage,
                 args,
-                event_queue,
+                SimpleQueue(),
             )
 
         except ValueError as e:
@@ -262,22 +261,23 @@ class ExperimentPanel(QWidget):
                         return
                 QApplication.restoreOverrideCursor()
 
+
+        # TODO: Insert experiment ID
+        experiment_id = "test"
         dialog = RunDialog(
-            self._config_file,
-            model,
-            event_queue,
+            experiment_id,
             self._notifier,
             self.parent(),  # type: ignore
             output_path=self.config.analysis_config.log_path,
         )
-        self.run_button.setEnabled(False)
-        self.run_button.setText(EXPERIMENT_IS_RUNNING_BUTTON_MESSAGE)
+        # self.run_button.setEnabled(False)
+        # self.run_button.setText(EXPERIMENT_IS_RUNNING_BUTTON_MESSAGE)
         dialog.run_experiment()
         dialog.show()
 
         def exit_handler() -> None:
-            self.run_button.setText(EXPERIMENT_READY_TO_RUN_BUTTON_MESSAGE)
-            self.run_button.setEnabled(True)
+            # self.run_button.setText(EXPERIMENT_READY_TO_RUN_BUTTON_MESSAGE)
+            # self.run_button.setEnabled(True)
             self.toggleExperimentType()
             self._notifier.emitErtChange()
 
